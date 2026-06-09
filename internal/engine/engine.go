@@ -58,12 +58,24 @@ func New(
 	return &Engine{eng: eng, guard: g, planner: p, tools: tools, state: st, audit: a, out: out, opts: opts, seen: make(map[string]bool)}
 }
 
+// rec writes an audit entry and fails closed: if the load-bearing audit trail
+// can't be written, the run must stop rather than continue unrecorded.
+func (e *Engine) rec(kind string, data map[string]any) error {
+	if err := e.audit.Record(kind, data); err != nil {
+		fmt.Fprintf(e.out, "  AUDIT WRITE FAILED — halting (the audit trail is load-bearing): %v\n", err)
+		return err
+	}
+	return nil
+}
+
 // Run executes the plan/act loop until cycles are exhausted, the planner
 // proposes nothing, or the context is cancelled.
 func (e *Engine) Run(ctx context.Context) error {
-	e.audit.Record("info", map[string]any{
+	if err := e.rec("info", map[string]any{
 		"event": "engagement_start", "id": e.eng.ID, "client": e.eng.Client, "dry_run": e.opts.DryRun,
-	})
+	}); err != nil {
+		return err
+	}
 
 	cycles := e.opts.MaxCycles
 	if cycles <= 0 {
@@ -111,12 +123,17 @@ func (e *Engine) Run(ctx context.Context) error {
 		noProgress++
 		if noProgress >= noProgressLimit {
 			fmt.Fprintf(e.out, "no progress for %d cycle(s); halting.\n", noProgress)
-			e.audit.Record("no_progress_halt", map[string]any{"cycle": c, "limit": noProgressLimit})
+			if err := e.rec("no_progress_halt", map[string]any{"cycle": c, "limit": noProgressLimit}); err != nil {
+				return err
+			}
 			break
 		}
 	}
 
-	e.audit.Record("info", map[string]any{"event": "engagement_end", "id": e.eng.ID})
+	if err := e.rec("info", map[string]any{"event": "engagement_end", "id": e.eng.ID}); err != nil {
+		return err
+	}
+	fmt.Fprintf(e.out, "\naudit head: %s\n", e.audit.Head())
 	return nil
 }
 
@@ -132,21 +149,22 @@ func (e *Engine) handle(ctx context.Context, a action.Action) (bool, error) {
 	key := a.CanonicalKey()
 	if e.seen[key] {
 		fmt.Fprintf(e.out, "  SKIP  %-12s %-22s — duplicate of an earlier action\n", a.Tool, a.Target)
-		e.audit.Record("duplicate_action_skipped", map[string]any{
+		return false, e.rec("duplicate_action_skipped", map[string]any{
 			"action": a.ID, "tool": a.Tool, "target": a.Target, "key": key,
 		})
-		return false, nil
 	}
 	e.seen[key] = true
 
 	dec := e.guard.Evaluate(a)
 	// a.Category / a.Risk are the model's SELF-DECLARED values, recorded for
 	// audit only; the guard gates on authoritative tool metadata.
-	e.audit.Record("decision", map[string]any{
+	if err := e.rec("decision", map[string]any{
 		"action": a.ID, "tool": a.Tool, "declared_category": a.Category,
 		"target": a.Target, "declared_risk": a.Risk.String(),
 		"verdict": dec.Verdict.String(), "allowed": dec.IsAllowed(), "reason": dec.Reason,
-	})
+	}); err != nil {
+		return false, err
+	}
 
 	switch dec.Verdict {
 	case guard.VerdictDeny:
@@ -156,10 +174,9 @@ func (e *Engine) handle(ctx context.Context, a action.Action) (bool, error) {
 		// Human-approval UX lands in a later phase; until then, fail safe by not
 		// executing and recording that approval was required.
 		fmt.Fprintf(e.out, "  HOLD  %-12s %-22s — needs approval: %s\n", a.Tool, a.Target, dec.Reason)
-		e.audit.Record("approval_required", map[string]any{
+		return false, e.rec("approval_required", map[string]any{
 			"action": a.ID, "tool": a.Tool, "target": a.Target, "reason": dec.Reason,
 		})
-		return false, nil
 	}
 	// VerdictAllow falls through.
 
@@ -171,13 +188,14 @@ func (e *Engine) handle(ctx context.Context, a action.Action) (bool, error) {
 	t, ok := e.tools.Get(a.Tool)
 	if !ok {
 		fmt.Fprintf(e.out, "  SKIP  %-12s %-22s — no such tool registered\n", a.Tool, a.Target)
-		e.audit.Record("result", map[string]any{"action": a.ID, "skipped": "unknown tool"})
-		return false, nil
+		return false, e.rec("result", map[string]any{"action": a.ID, "skipped": "unknown tool"})
 	}
 
-	e.audit.Record("action", map[string]any{
+	if err := e.rec("action", map[string]any{
 		"action": a.ID, "tool": a.Tool, "target": a.Target, "params": a.Params,
-	})
+	}); err != nil {
+		return false, err
+	}
 
 	res, err := t.Execute(ctx, a)
 	if err != nil {
@@ -199,10 +217,12 @@ func (e *Engine) handle(ctx context.Context, a action.Action) (bool, error) {
 			newAsset = true
 		}
 	}
-	e.audit.Record("result", map[string]any{
+	if err := e.rec("result", map[string]any{
 		"action": a.ID, "success": res.Success, "output": res.Output,
 		"findings": len(res.Findings), "assets": len(res.Assets),
-	})
+	}); err != nil {
+		return false, err
+	}
 	if res.Output != "" {
 		fmt.Fprintf(e.out, "  DONE  %-12s %-22s — %s\n", a.Tool, a.Target, res.Output)
 	}
