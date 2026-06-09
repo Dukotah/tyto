@@ -36,25 +36,67 @@ type proposal struct {
 	} `json:"actions"`
 }
 
-// Plan asks the model for the next actions given current state and the set of
-// available tool names.
-func (p *Planner) Plan(ctx context.Context, eng *engagement.Engagement, st *state.State, tools []string) ([]action.Action, error) {
-	raw, err := p.llm.Generate(ctx, SystemPrompt(), UserPrompt(eng, st, tools))
-	if err != nil {
-		return nil, fmt.Errorf("planner: llm generate: %w", err)
-	}
+// maxRepairRetries is how many times the planner re-prompts the model with the
+// validation error before giving up. 1 retry => 2 model calls total.
+const maxRepairRetries = 1
 
+// Plan asks the model for the next actions given current state and the set of
+// available tool names. Output is grammar-constrained to the action schema (when
+// the backend supports it), then validated. Invalid output triggers a bounded
+// repair retry; on exhaustion Plan FAILS CLOSED (error + zero actions) so the
+// engine never executes a half-parsed action.
+func (p *Planner) Plan(ctx context.Context, eng *engagement.Engagement, st *state.State, tools []string) ([]action.Action, error) {
+	schema := ActionSchema()
+	system, user := SystemPrompt(), UserPrompt(eng, st, tools)
+
+	var lastErr error
+	for attempt := 0; attempt <= maxRepairRetries; attempt++ {
+		raw, err := p.generate(ctx, system, user, schema)
+		if err != nil {
+			return nil, fmt.Errorf("planner: llm generate: %w", err)
+		}
+		actions, err := decodeActions(raw)
+		if err == nil {
+			return actions, nil
+		}
+		lastErr = err
+		// Feed the validation error back so the model can correct itself.
+		user = RepairPrompt(raw, err)
+	}
+	return nil, fmt.Errorf("planner: model output failed validation after %d repair attempt(s): %w", maxRepairRetries, lastErr)
+}
+
+// generate uses the backend's schema-constrained mode when available, else falls
+// back to a plain JSON generation.
+func (p *Planner) generate(ctx context.Context, system, user string, schema json.RawMessage) (string, error) {
+	if sc, ok := p.llm.(llm.SchemaClient); ok {
+		return sc.GenerateSchema(ctx, system, user, schema)
+	}
+	return p.llm.Generate(ctx, system, user)
+}
+
+// decodeActions parses and validates a proposal, failing closed. Category MUST
+// parse to a member of the closed taxonomy (never silently defaulted — unlike
+// risk, which fails safe to passive because the guard, not the model, is the
+// authority on risk).
+func decodeActions(raw string) ([]action.Action, error) {
 	prop, err := parseProposal(raw)
 	if err != nil {
-		return nil, fmt.Errorf("planner: %w", err)
+		return nil, err
 	}
-
 	actions := make([]action.Action, 0, len(prop.Actions))
 	for i, a := range prop.Actions {
+		if strings.TrimSpace(a.Tool) == "" {
+			return nil, fmt.Errorf("action %d: empty tool", i)
+		}
+		if strings.TrimSpace(a.Target) == "" {
+			return nil, fmt.Errorf("action %d: empty target", i)
+		}
+		if _, err := action.ParseCategory(a.Category); err != nil {
+			return nil, fmt.Errorf("action %d: %w", i, err)
+		}
 		risk, err := action.ParseRiskLevel(a.Risk)
 		if err != nil {
-			// Unknown risk from the model: fail safe to passive so the guard
-			// (not the model) remains the authority on what is allowed.
 			risk = action.RiskPassive
 		}
 		actions = append(actions, action.Action{

@@ -40,7 +40,9 @@ type ollamaRequest struct {
 	System string `json:"system,omitempty"`
 	Prompt string `json:"prompt"`
 	Stream bool   `json:"stream"`
-	Format string `json:"format,omitempty"`
+	// Format is raw JSON: the string "json" for a plain JSON hint, or a full JSON
+	// Schema object, which Ollama compiles to a GBNF grammar (structured output).
+	Format json.RawMessage `json:"format,omitempty"`
 }
 
 type ollamaResponse struct {
@@ -48,15 +50,28 @@ type ollamaResponse struct {
 	Error    string `json:"error,omitempty"`
 }
 
-// Generate implements Client by calling Ollama's /api/generate endpoint with
-// JSON-mode output enabled.
+// Generate implements Client by calling Ollama with a plain JSON-mode hint.
 func (o *Ollama) Generate(ctx context.Context, system, user string) (string, error) {
+	return o.generate(ctx, system, user, json.RawMessage(`"json"`))
+}
+
+// GenerateSchema implements SchemaClient: it sends the JSON Schema as the format,
+// which Ollama turns into a token-level grammar so the output is valid by
+// construction. An empty schema falls back to the plain JSON hint.
+func (o *Ollama) GenerateSchema(ctx context.Context, system, user string, schema json.RawMessage) (string, error) {
+	if len(schema) == 0 {
+		return o.Generate(ctx, system, user)
+	}
+	return o.generate(ctx, system, user, schema)
+}
+
+func (o *Ollama) generate(ctx context.Context, system, user string, format json.RawMessage) (string, error) {
 	body, err := json.Marshal(ollamaRequest{
 		Model:  o.Model,
 		System: system,
 		Prompt: user,
 		Stream: false,
-		Format: "json",
+		Format: format,
 	})
 	if err != nil {
 		return "", err

@@ -34,6 +34,22 @@ Respond with JSON ONLY, no prose, in exactly this shape:
 Propose between 1 and 3 actions.`)
 }
 
+// RepairPrompt re-prompts the model after its previous output failed validation,
+// quoting the bad output and the exact error so it can correct itself. Kept
+// terse: the schema/grammar already constrains structure; this fixes semantic
+// slips like an out-of-taxonomy category.
+func RepairPrompt(prev string, validationErr error) string {
+	return fmt.Sprintf(`Your previous response was rejected by the validator.
+
+ERROR: %s
+
+YOUR PREVIOUS RESPONSE:
+%s
+
+Reply again with corrected JSON ONLY, in the required shape. Use only the
+allowed category values, and only tools from the available list.`, validationErr, prev)
+}
+
 // UserPrompt renders the live engagement context for one planning cycle.
 func UserPrompt(eng *engagement.Engagement, st *state.State, tools []string) string {
 	var b strings.Builder

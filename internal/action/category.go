@@ -41,6 +41,18 @@ func (c Category) String() string {
 	}
 }
 
+// AllCategories returns every category in canonical order. It is the single
+// source for JSON Schema enums and help text, so those can never drift from the
+// taxonomy.
+func AllCategories() []Category {
+	return []Category{CategoryRecon, CategoryScan, CategoryExploit, CategoryPostExploit, CategoryIdentity, CategoryDoS}
+}
+
+// AllRiskLevels returns every risk level in canonical (ascending) order.
+func AllRiskLevels() []RiskLevel {
+	return []RiskLevel{RiskPassive, RiskLow, RiskMedium, RiskHigh}
+}
+
 // ParseCategory parses a category name (case-insensitive, alias-tolerant).
 // Unknown names are an error so callers can FAIL CLOSED rather than silently
 // never-matching a forbidden-list entry.
