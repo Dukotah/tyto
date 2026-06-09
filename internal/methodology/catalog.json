@@ -73,6 +73,33 @@
       "why": "check for deprecated TLS versions and certificate problems"
     },
     {
+      "id": "http-crawl",
+      "name": "Web crawl / attack-surface discovery",
+      "phase": "scanning",
+      "category": "recon",
+      "tool": "webcrawl",
+      "applies_to": {"service": "http"},
+      "why": "follow links and forms to discover parameterized endpoints to test"
+    },
+    {
+      "id": "https-crawl",
+      "name": "Web crawl / attack-surface discovery",
+      "phase": "scanning",
+      "category": "recon",
+      "tool": "webcrawl",
+      "applies_to": {"service": "https"},
+      "why": "follow links and forms to discover parameterized endpoints to test"
+    },
+    {
+      "id": "endpoint-injection",
+      "name": "Injection testing (XSS / SQLi)",
+      "phase": "exploitation",
+      "category": "scan",
+      "tool": "webinject",
+      "applies_to": {"asset_type": "endpoint"},
+      "why": "test a parameterized endpoint for reflected XSS and error-based SQL injection"
+    },
+    {
       "id": "ssh-enum",
       "name": "SSH version and auth enumeration",
       "phase": "scanning",

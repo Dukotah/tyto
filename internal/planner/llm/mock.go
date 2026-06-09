@@ -38,6 +38,8 @@ func NewScriptedMock(targets []string) *Mock {
 			fmt.Sprintf(`{"tool":"httpprobe","category":"recon","target":%q,"risk":"low","params":{},"rationale":"fingerprint http"}`, t),
 			fmt.Sprintf(`{"tool":"webcheck","category":"scan","target":%q,"risk":"low","params":{},"rationale":"safe web checks"}`, t),
 			fmt.Sprintf(`{"tool":"webdiscover","category":"scan","target":%q,"risk":"low","params":{},"rationale":"sensitive-path discovery"}`, t),
+			fmt.Sprintf(`{"tool":"webcrawl","category":"recon","target":%q,"risk":"low","params":{},"rationale":"discover endpoints"}`, t),
+			fmt.Sprintf(`{"tool":"webinject","category":"scan","target":%q,"risk":"medium","params":{},"rationale":"injection testing"}`, t),
 		)
 	}
 	return &Mock{Responses: []string{
