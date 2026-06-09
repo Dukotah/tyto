@@ -77,16 +77,16 @@ free-solves a kill chain.
 > **v0.2 in progress** (branch `v0.2`): methodology task-tree (`internal/methodology`
 > — the planner now selects from an embedded, asset-pruned technique catalog;
 > `tyto methodology` lists it), SARIF 2.1.0 export (`--report-format sarif`),
-> resumable engagements (`--resume`, JSON state snapshot), and a built-in tool
-> surface that now covers **active** web-app testing, not just hygiene:
-> **portscan**; **httpprobe**; **webcheck** (security headers, server-version
-> disclosure, directory listing, cookie flags); **webdiscover** (sensitive-path
-> content discovery w/ catch-all guard); **tlscheck** (deprecated TLS + cert
-> problems); **webcrawl** (same-host link/form crawl → typed `endpoint` assets);
-> and **webinject** (reflected XSS + error-based SQLi on discovered params).
-> Verified live: the crawl→inject chain finds real HIGH-severity XSS and SQLi.
-> Still ahead for v0.2: embedded Nuclei + vendored templates, a relational SQLite
-> store, dual CVSS, and a Typst/maroto PDF report.
+> resumable engagements (`--resume`), CVSS v3.1 scoring (`internal/cvss`, wired
+> into the report), and a **15-tool** built-in surface covering recon, hygiene,
+> and **active** web-app testing: portscan, httpprobe, webcheck, webdiscover,
+> tlscheck, webcrawl, **webinject** (XSS + SQLi error/boolean + path traversal +
+> command injection, CVSS-scored), corscheck, redircheck, httpmethods, dnsenum,
+> sshcheck, ftpcheck, emailsec, secretscan. Verified live: the crawl→inject chain
+> finds real HIGH XSS and SQLi. Many of these tools were built in parallel via
+> subagents and integrated centrally. Still ahead for v0.2: embedded Nuclei +
+> vendored templates (the CVE-breadth lever), a relational SQLite store, and a
+> Typst/maroto PDF report.
 
 **The all-in-one is the north star, NOT the v1 deliverable.** Draw a line and ship the
 differentiator first (which is mostly Phase-1 work anyway). **v0.1 =**
