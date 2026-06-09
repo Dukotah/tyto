@@ -1,0 +1,85 @@
+{
+  "techniques": [
+    {
+      "id": "host-port-scan",
+      "name": "TCP service enumeration",
+      "phase": "scanning",
+      "category": "scan",
+      "tool": "portscan",
+      "applies_to": {"asset_type": "host"},
+      "why": "enumerate exposed TCP services on a discovered host"
+    },
+    {
+      "id": "http-fingerprint",
+      "name": "HTTP service fingerprint",
+      "phase": "recon",
+      "category": "recon",
+      "tool": "httpprobe",
+      "applies_to": {"service": "http"},
+      "why": "identify the web server, status, and title of an HTTP service"
+    },
+    {
+      "id": "https-fingerprint",
+      "name": "HTTPS service fingerprint",
+      "phase": "recon",
+      "category": "recon",
+      "tool": "httpprobe",
+      "applies_to": {"service": "https"},
+      "why": "identify the web server, status, and title of an HTTPS service"
+    },
+    {
+      "id": "http-hardening-review",
+      "name": "HTTP hardening review",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "webcheck",
+      "applies_to": {"service": "http"},
+      "why": "check the HTTP service for missing security headers and disclosure"
+    },
+    {
+      "id": "https-hardening-review",
+      "name": "HTTPS hardening review",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "webcheck",
+      "applies_to": {"service": "https"},
+      "why": "check the HTTPS service for missing security headers and disclosure"
+    },
+    {
+      "id": "ssh-enum",
+      "name": "SSH version and auth enumeration",
+      "phase": "scanning",
+      "category": "scan",
+      "tool": "",
+      "applies_to": {"service": "ssh"},
+      "why": "enumerate SSH version and permitted auth methods (no built-in tool yet)"
+    },
+    {
+      "id": "smb-enum",
+      "name": "SMB share and session enumeration",
+      "phase": "scanning",
+      "category": "scan",
+      "tool": "",
+      "applies_to": {"service": "smb"},
+      "why": "enumerate SMB shares/sessions (Phase 5 internal/identity tier)"
+    },
+    {
+      "id": "ftp-anon",
+      "name": "FTP anonymous-login check",
+      "phase": "scanning",
+      "category": "scan",
+      "tool": "",
+      "applies_to": {"service": "ftp"},
+      "why": "test for anonymous FTP access (no built-in tool yet)"
+    },
+    {
+      "id": "db-enum",
+      "name": "Database service enumeration",
+      "phase": "scanning",
+      "category": "scan",
+      "tool": "",
+      "applies_to": {"service": "mysql"},
+      "why": "enumerate the exposed database service (no built-in tool yet)"
+    }
+  ]
+}

@@ -77,8 +77,11 @@ func TestObserveReplanLoopSurfacesDiscoveredService(t *testing.T) {
 	if len(client.prompts) < 2 {
 		t.Fatalf("planner was not called a second cycle (prompts=%d)", len(client.prompts))
 	}
+	// The discovered service reaches cycle 2's planner via state (the observe ->
+	// re-plan loop). The methodology frontier additionally recommends techniques,
+	// but only for registered tools — covered by the methodology package tests.
 	second := client.prompts[1]
-	if !strings.Contains(second, "h:80") || !strings.Contains(second, "http") {
-		t.Fatalf("cycle-2 prompt did not surface the discovered http service:\n%s", second)
+	if !strings.Contains(second, "h:80") {
+		t.Fatalf("cycle-2 prompt did not surface the discovered service:\n%s", second)
 	}
 }

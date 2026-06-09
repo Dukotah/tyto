@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/dukotah/tyto/internal/engagement"
+	"github.com/dukotah/tyto/internal/methodology"
 	"github.com/dukotah/tyto/internal/state"
 )
 
@@ -83,19 +84,22 @@ func UserPrompt(eng *engagement.Engagement, st *state.State, tools []string) str
 	b.WriteString("\nCURRENT STATE:\n")
 	b.WriteString(st.Summary())
 
-	// The frontier is computed in Go from discovered service assets; it tells the
-	// model what is worth doing next so it never has to parse raw output to find it.
-	if fr := st.Frontier(); len(fr) > 0 {
-		b.WriteString("\nDISCOVERED SERVICES (suggested next steps):\n")
-		for _, f := range fr {
-			fmt.Fprintf(&b, "  - %s", f.Value)
-			if f.Service != "" {
-				fmt.Fprintf(&b, " (%s)", f.Service)
+	// The methodology frontier is computed in Go from discovered assets: which
+	// techniques apply next, pruned to tools that exist. The model SELECTS from
+	// this — it never has to parse raw output to decide what to do.
+	avail := make(map[string]bool, len(tools))
+	for _, t := range tools {
+		avail[t] = true
+	}
+	if recs := methodology.Recommend(st.Assets(), avail); len(recs) > 0 {
+		b.WriteString("\nRECOMMENDED NEXT TECHNIQUES (methodology, from discovered assets):\n")
+		for _, r := range recs {
+			tool := r.Technique.Tool
+			if tool == "" {
+				tool = "(no built-in tool yet)"
 			}
-			if len(f.Suggested) > 0 {
-				fmt.Fprintf(&b, " → %s", strings.Join(f.Suggested, "; "))
-			}
-			b.WriteString("\n")
+			fmt.Fprintf(&b, "  - %s on %s — tool=%s, phase=%s: %s\n",
+				r.Technique.Name, r.Target, tool, r.Technique.Phase, r.Technique.Why)
 		}
 	}
 

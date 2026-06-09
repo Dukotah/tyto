@@ -24,6 +24,7 @@ func newRootCmd() *cobra.Command {
 		newEngagementCmd(),
 		newAuthorizeCmd(),
 		newToolsCmd(),
+		newMethodologyCmd(),
 		newVersionCmd(),
 	)
 	return root
