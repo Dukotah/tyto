@@ -22,6 +22,7 @@ import (
 	"github.com/dukotah/tyto/internal/planner/llm"
 	"github.com/dukotah/tyto/internal/report"
 	"github.com/dukotah/tyto/internal/state"
+	"github.com/dukotah/tyto/internal/sysinfo"
 	"github.com/dukotah/tyto/internal/tool"
 	"github.com/dukotah/tyto/internal/tool/builtin/portscan"
 	"github.com/dukotah/tyto/pkg/version"
@@ -202,7 +203,7 @@ func cmdRun(args []string) {
 	engPath := fs.String("engagement", "", "path to engagement YAML (required)")
 	dryRun := fs.Bool("dry-run", false, "plan and guard only; never execute tools")
 	plannerKind := fs.String("planner", "", "planner backend: ollama|mock (default: ollama, or mock with --dry-run)")
-	model := fs.String("model", "qwen3:14b", "ollama model name")
+	model := fs.String("model", "", "ollama model name (default: auto-detected from RAM)")
 	ollamaURL := fs.String("ollama-url", "http://localhost:11434", "ollama base URL")
 	cycles := fs.Int("cycles", 3, "max plan/act cycles (loop halts early on no progress)")
 	auditPath := fs.String("audit", "", "audit log path (default: <engagement-id>.audit.jsonl)")
@@ -231,7 +232,14 @@ func cmdRun(args []string) {
 	case "mock":
 		client = llm.NewDemoMock()
 	case "ollama":
-		client = llm.NewOllama(*ollamaURL, *model)
+		m := *model
+		if m == "" {
+			ram, derr := sysinfo.TotalRAMBytes()
+			choice := llm.DefaultModel(ram, derr == nil)
+			m = choice.Model
+			fmt.Printf("model: %s\n", choice)
+		}
+		client = llm.NewOllama(*ollamaURL, m)
 	default:
 		fatal(fmt.Sprintf("unknown planner backend %q (want ollama|mock)", kind))
 	}
