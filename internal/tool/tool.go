@@ -13,10 +13,12 @@ import (
 type Tool interface {
 	// Name is the unique identifier the planner references.
 	Name() string
-	// Category groups the tool for rules-of-engagement checks (recon, scan...).
-	Category() string
-	// MaxRisk is the highest risk level this tool can reach. Advisory metadata
-	// for the planner and registry; the guard enforces the engagement ceiling.
+	// Category is the AUTHORITATIVE category the Scope Guard enforces the
+	// engagement's allowed/forbidden lists against (from the closed taxonomy).
+	// The model's self-declared category is advisory only and never gates.
+	Category() action.Category
+	// MaxRisk is the AUTHORITATIVE ceiling this tool can reach. The guard gates
+	// on max(MaxRisk, per-param classifier), never on the model's declared risk.
 	MaxRisk() action.RiskLevel
 	// Execute performs the action against its target.
 	Execute(ctx context.Context, a action.Action) (action.Result, error)

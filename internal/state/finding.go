@@ -31,13 +31,22 @@ func (s Severity) String() string {
 }
 
 // Finding is something worth reporting that a tool discovered.
+//
+// The planner tags classify each exported string field for the quarantine
+// boundary (see quarantine.go): "safe" fields may enter the planner prompt
+// (sanitized); "quarantined" free-text fields are tool-controlled and must
+// never reach the model. Operator-facing report rendering sees every field.
 type Finding struct {
-	ID          string
-	Title       string
-	Severity    Severity
-	Target      string
-	Description string
-	Evidence    string
-	Tool        string
-	FoundAt     time.Time
+	ID          string   `planner:"quarantined"`
+	Title       string   `planner:"safe"`
+	Severity    Severity // enum, rendered safely
+	Target      string   `planner:"safe"`
+	Description string   `planner:"quarantined"`
+	Evidence    string   `planner:"quarantined"` // raw tool output — never into the prompt
+	Tool        string   `planner:"quarantined"`
+	// Validated is true when a tool DIRECTLY observed the condition (vs an
+	// inference). The report separates validated findings from candidates —
+	// tyto's "confirm before you report" discipline.
+	Validated bool
+	FoundAt   time.Time
 }

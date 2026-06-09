@@ -62,7 +62,18 @@ free-solves a kill chain.
 
 ---
 
-## 🚢 v0.1 Ship Line (the smallest credible, useful product)
+## 🚢 v0.1 Ship Line (the smallest credible, useful product) — ✅ MVP REACHED
+> **Status (June 2026): the v0.1 MVP runs end to end.** scan (`portscan`) →
+> fingerprint (`httpprobe`) → safe web vuln checks (`webcheck`) → validated,
+> grouped Markdown/JSON report, every action under the deterministic Scope Guard
+> + Ed25519 authorization gate, recorded in the tamper-evident hash-chained
+> fail-closed audit log. Proven by an end-to-end test against a live local HTTP
+> server (`internal/engine/mvp_test.go`) and runnable offline via
+> `configs/localhost.engagement.yaml`. **Substitution vs the cut below:** a
+> built-in `webcheck` (safe header/version/listing checks) stands in for embedded
+> Nuclei, which — with vendored templates, SARIF, and SQLite-resume — is the v0.2
+> increment.
+
 **The all-in-one is the north star, NOT the v1 deliverable.** Draw a line and ship the
 differentiator first (which is mostly Phase-1 work anyway). **v0.1 =**
 
@@ -91,9 +102,23 @@ findings · audit log · CLI (`engagement validate`, `run`, `tools`, `version`).
 > Phase 1 closes (below). Until then, docs must not describe rate-limits, audit
 > tamper-evidence, or authorization enforcement as *implemented*.
 
-## Phase 1 — Make the brain reliable & the guard *real* (the correctness/safety core) — ⬜
+## Phase 1 — Make the brain reliable & the guard *real* (the correctness/safety core) — ✅
 *Highest leverage, lowest effort, and the bulk of the v0.1 differentiator. This is
 where "model-unbypassable guard" becomes true instead of aspirational.*
+
+> **Status (June 2026): all Phase-1 items landed** on branch `phase-1` (14 commits
+> since the scaffold; build/vet/test green, 19 test files). Delivered: typed
+> taxonomy + authoritative guard gating (Phase 0 close-out), the quarantine
+> invariant, typed-asset observe→re-plan loop, deterministic termination contract
+> (dedup + no-progress halt + window deadline), tamper-evident hash-chained
+> fail-closed audit log, Ed25519 authorization gate enforced in the guard (+
+> `tyto authorize` helper), schema-constrained planning with validate→repair→fail
+> closed, RAM-tier model auto-detection, RoE rate-limit/concurrency enforcement,
+> a hermetic evaluation harness, and a cobra CLI. Two deliberate deviations:
+> schema validation is in-package rather than via santhosh-tekuri/invopop (keeps
+> the build dependency-free/offline); the live-model (GPU) eval tier is deferred
+> behind the hermetic scorer. **Next: the Phase-2 recon/scan + methodology slice
+> toward the v0.1 ship line.**
 
 **Taxonomy & guard authority (do first — everything else imports these):**
 - ⬜ **Freeze the canonical action taxonomy.** Convert `action.Category` from a free

@@ -69,11 +69,16 @@ type Action struct {
 
 // Result is what a tool returns after executing an Action.
 type Result struct {
-	ActionID   string
-	Tool       string
-	Success    bool
-	Output     string
-	Findings   []state.Finding
+	ActionID string
+	Tool     string
+	Success  bool
+	Output   string
+	Findings []state.Finding
+	// Assets are the typed entities (hosts, services, URLs) the tool discovered.
+	// The engine persists them so the planner can pick service-specific follow-ups
+	// from State.Frontier() — computed deterministically in Go, never by the model
+	// parsing raw output.
+	Assets     []state.Asset
 	Err        string
 	StartedAt  time.Time
 	FinishedAt time.Time

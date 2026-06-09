@@ -3,6 +3,7 @@ package engagement
 import (
 	"fmt"
 	"net"
+	"net/url"
 	"strings"
 )
 
@@ -47,7 +48,7 @@ func (t Target) validate() error {
 func (t Target) matches(target string) bool {
 	switch t.Type {
 	case TargetURL:
-		return strings.HasPrefix(target, t.Value)
+		return urlInScope(t.Value, target)
 	case TargetCIDR:
 		_, ipnet, err := net.ParseCIDR(t.Value)
 		if err != nil {
@@ -102,6 +103,45 @@ func (s Scope) validate() error {
 		}
 	}
 	return nil
+}
+
+// urlInScope reports whether target falls under the scope URL: same host (and
+// port, if the scope specifies one) and a path at or below the scope path,
+// segment-aware. This replaces a naive strings.HasPrefix, which suffered
+// prefix-confusion — e.g. it let "https://app.example.com.evil.com/" match a
+// scope of "https://app.example.com/", and "/app-admin" match a scope path of
+// "/app". The target may be a bare host[:port][/path] without a scheme.
+func urlInScope(scope, target string) bool {
+	su, err := url.Parse(scope)
+	if err != nil || su.Hostname() == "" {
+		return false
+	}
+	t := target
+	if !strings.Contains(t, "://") {
+		t = "//" + t // let url.Parse read a bare host[:port][/path] as authority
+	}
+	tu, err := url.Parse(t)
+	if err != nil || tu.Hostname() == "" {
+		return strings.EqualFold(hostOf(target), su.Hostname())
+	}
+	if !strings.EqualFold(tu.Hostname(), su.Hostname()) {
+		return false
+	}
+	if su.Port() != "" && su.Port() != tu.Port() {
+		return false
+	}
+	return pathUnder(su.EscapedPath(), tu.EscapedPath())
+}
+
+// pathUnder reports whether targetPath is at or below scopePath, comparing whole
+// path segments (so "/app" covers "/app" and "/app/x" but not "/app-admin").
+func pathUnder(scopePath, targetPath string) bool {
+	sp := strings.Trim(scopePath, "/")
+	tp := strings.Trim(targetPath, "/")
+	if sp == "" {
+		return true // scope is the whole host
+	}
+	return tp == sp || strings.HasPrefix(tp, sp+"/")
 }
 
 // hostOf extracts the bare host from a target that may be a URL or host:port.

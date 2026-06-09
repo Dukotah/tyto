@@ -34,6 +34,22 @@ Respond with JSON ONLY, no prose, in exactly this shape:
 Propose between 1 and 3 actions.`)
 }
 
+// RepairPrompt re-prompts the model after its previous output failed validation,
+// quoting the bad output and the exact error so it can correct itself. Kept
+// terse: the schema/grammar already constrains structure; this fixes semantic
+// slips like an out-of-taxonomy category.
+func RepairPrompt(prev string, validationErr error) string {
+	return fmt.Sprintf(`Your previous response was rejected by the validator.
+
+ERROR: %s
+
+YOUR PREVIOUS RESPONSE:
+%s
+
+Reply again with corrected JSON ONLY, in the required shape. Use only the
+allowed category values, and only tools from the available list.`, validationErr, prev)
+}
+
 // UserPrompt renders the live engagement context for one planning cycle.
 func UserPrompt(eng *engagement.Engagement, st *state.State, tools []string) string {
 	var b strings.Builder
@@ -66,6 +82,22 @@ func UserPrompt(eng *engagement.Engagement, st *state.State, tools []string) str
 
 	b.WriteString("\nCURRENT STATE:\n")
 	b.WriteString(st.Summary())
+
+	// The frontier is computed in Go from discovered service assets; it tells the
+	// model what is worth doing next so it never has to parse raw output to find it.
+	if fr := st.Frontier(); len(fr) > 0 {
+		b.WriteString("\nDISCOVERED SERVICES (suggested next steps):\n")
+		for _, f := range fr {
+			fmt.Fprintf(&b, "  - %s", f.Value)
+			if f.Service != "" {
+				fmt.Fprintf(&b, " (%s)", f.Service)
+			}
+			if len(f.Suggested) > 0 {
+				fmt.Fprintf(&b, " → %s", strings.Join(f.Suggested, "; "))
+			}
+			b.WriteString("\n")
+		}
+	}
 
 	b.WriteString("\n\nWhat are the next 1-3 actions?")
 	return b.String()

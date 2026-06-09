@@ -1,65 +1,154 @@
 // Package guard is the Scope Guard: the single, deterministic chokepoint every
 // action passes through before it can execute. It is intentionally simple, has
 // no I/O, and contains no AI. The planner proposes; the guard disposes. The
-// model cannot disable or bypass it.
+// model cannot disable or bypass it — and crucially, it gates on AUTHORITATIVE
+// tool metadata (category + risk ceiling snapshotted from the registry), never
+// on the risk/category strings the model supplies for itself.
 package guard
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/dukotah/tyto/internal/action"
 	"github.com/dukotah/tyto/internal/engagement"
 )
 
+// Verdict is the guard's three-state ruling on an action.
+type Verdict int
+
+const (
+	// VerdictDeny: the action is out of bounds and must not run. This is also
+	// the zero value, so any unhandled/default case fails closed.
+	VerdictDeny Verdict = iota
+	// VerdictAllow: the action may execute.
+	VerdictAllow
+	// VerdictRequireApproval: the action is in-bounds but high-consequence and
+	// may proceed only after an explicit, audited human sign-off. Producers are
+	// added in later phases (authorization / exploitation gating); reserving the
+	// state now keeps the human gate INSIDE the deterministic boundary.
+	VerdictRequireApproval
+)
+
+func (v Verdict) String() string {
+	switch v {
+	case VerdictAllow:
+		return "allow"
+	case VerdictRequireApproval:
+		return "require_approval"
+	default:
+		return "deny"
+	}
+}
+
 // Decision is the guard's verdict on a single action.
 type Decision struct {
-	Allowed bool
+	Verdict Verdict
 	Reason  string
 }
 
+// IsAllowed reports whether the action may execute without further gating.
+func (d Decision) IsAllowed() bool { return d.Verdict == VerdictAllow }
+
 // Allow returns an allowing decision.
-func Allow() Decision { return Decision{Allowed: true} }
+func Allow() Decision { return Decision{Verdict: VerdictAllow} }
 
 // Deny returns a denying decision with a human-readable reason.
-func Deny(reason string) Decision { return Decision{Allowed: false, Reason: reason} }
+func Deny(reason string) Decision { return Decision{Verdict: VerdictDeny, Reason: reason} }
 
-// Guard enforces one engagement's scope and rules of engagement.
-type Guard struct {
-	eng *engagement.Engagement
-	now func() time.Time // injectable for tests
+// RequireApproval returns a decision that gates the action behind human sign-off.
+func RequireApproval(reason string) Decision {
+	return Decision{Verdict: VerdictRequireApproval, Reason: reason}
 }
 
-// New builds a Guard for the given engagement.
-func New(eng *engagement.Engagement) *Guard {
-	return &Guard{eng: eng, now: time.Now}
+// ToolMeta is the deterministic, read-only authority the guard gates on: a tool's
+// category and risk ceiling, snapshotted from the registry at construction. The
+// guard deliberately never sees a Tool's Execute, so guard code cannot run tools
+// and cannot be tricked into trusting model-supplied risk/category.
+type ToolMeta struct {
+	Category action.Category
+	MaxRisk  action.RiskLevel
+}
+
+// RiskClassifier optionally raises an action's effective risk based on its params
+// (e.g. sqlmap detect=medium vs --dump=high — Phase 4 per-mode gating). It MUST
+// default UP: an unrecognized param set returns the tool's ceiling, never below
+// it. nil means "use the tool's MaxRisk".
+type RiskClassifier func(tool string, params map[string]string) action.RiskLevel
+
+// Guard enforces one engagement's scope and rules of engagement against the
+// authoritative tool metadata.
+type Guard struct {
+	eng      *engagement.Engagement
+	tools    map[string]ToolMeta
+	grants   []engagement.VerifiedGrant
+	classify RiskClassifier
+	now      func() time.Time // injectable for tests
+}
+
+// New builds a Guard for the given engagement, an immutable snapshot of the
+// registered tools' authoritative category/risk, and the set of cryptographically
+// verified authorization grants (nil for engagements with no high/exploit
+// authorization). The guard only ever sees grants that already verified, so it
+// trusts no key material itself.
+func New(eng *engagement.Engagement, tools map[string]ToolMeta, grants []engagement.VerifiedGrant) *Guard {
+	return &Guard{eng: eng, tools: tools, grants: grants, now: time.Now}
+}
+
+// WithClassifier attaches a per-param risk classifier and returns the guard.
+func (g *Guard) WithClassifier(c RiskClassifier) *Guard {
+	g.classify = c
+	return g
 }
 
 // Evaluate returns whether an action is permitted. Checks run cheapest-first and
-// short-circuit on the first failure.
+// short-circuit on the first failure. Risk and category are taken from the
+// AUTHORITATIVE tool snapshot; the model's self-declared a.Risk / a.Category are
+// never trusted for gating.
 func (g *Guard) Evaluate(a action.Action) Decision {
+	// 0. Resolve the tool authoritatively. Unknown tool => deny (fail closed).
+	meta, ok := g.tools[a.Tool]
+	if !ok {
+		return Deny(fmt.Sprintf("unknown tool %q (not registered)", a.Tool))
+	}
+
 	// 1. Scope. Out-of-scope always wins.
 	if !g.eng.Scope.Contains(a.Target) {
 		return Deny(fmt.Sprintf("target %q is not in scope", a.Target))
 	}
 
-	// 2. Risk ceiling.
+	// 2. Risk ceiling — gated on the AUTHORITATIVE effective risk (the tool's
+	// ceiling, raised by the param classifier), never the model's a.Risk.
 	maxRisk, err := g.eng.RoE.MaxRiskLevel()
 	if err != nil {
 		return Deny("rules of engagement have an invalid max_risk")
 	}
-	if a.Risk > maxRisk {
-		return Deny(fmt.Sprintf("action risk %s exceeds engagement ceiling %s", a.Risk, maxRisk))
+	effRisk := meta.MaxRisk
+	if g.classify != nil {
+		if r := g.classify(a.Tool, a.Params); r > effRisk {
+			effRisk = r
+		}
+	}
+	if effRisk > maxRisk {
+		return Deny(fmt.Sprintf("action risk %s exceeds engagement ceiling %s", effRisk, maxRisk))
 	}
 
-	// 3. Categories. Forbidden beats allowed.
-	cat := strings.ToLower(strings.TrimSpace(a.Category))
-	if containsFold(g.eng.RoE.ForbiddenCategories, cat) {
-		return Deny(fmt.Sprintf("category %q is forbidden by the rules of engagement", a.Category))
+	// 3. Categories — gated on the tool's AUTHORITATIVE category. Forbidden beats
+	// allowed.
+	cat := meta.Category
+	if categoryIn(g.eng.RoE.ForbiddenCategories, cat) {
+		return Deny(fmt.Sprintf("category %q is forbidden by the rules of engagement", cat))
 	}
-	if len(g.eng.RoE.AllowedCategories) > 0 && !containsFold(g.eng.RoE.AllowedCategories, cat) {
-		return Deny(fmt.Sprintf("category %q is not in the allowed list", a.Category))
+	if len(g.eng.RoE.AllowedCategories) > 0 && !categoryIn(g.eng.RoE.AllowedCategories, cat) {
+		return Deny(fmt.Sprintf("category %q is not in the allowed list", cat))
+	}
+
+	// 3.5 Authorization. High-risk or exploit-category actions require a verified,
+	// client-signed grant covering this target at this tier. No covering grant ⇒
+	// deny (fail closed). This is gated on the AUTHORITATIVE effective risk and
+	// tool category, never on the model's self-declared values.
+	if requiresAuthorization(meta.Category, effRisk) && !g.authorized(a.Target, effRisk) {
+		return Deny(fmt.Sprintf("action (%s, risk %s) requires a verified client authorization covering %q at this tier", cat, effRisk, a.Target))
 	}
 
 	// 4. Time window.
@@ -70,9 +159,30 @@ func (g *Guard) Evaluate(a action.Action) Decision {
 	return Allow()
 }
 
-func containsFold(list []string, v string) bool {
+// requiresAuthorization reports whether an action is high-consequence enough to
+// need a signed client grant: a high effective risk, or any exploit-category tool.
+func requiresAuthorization(cat action.Category, effRisk action.RiskLevel) bool {
+	return effRisk >= action.RiskHigh || cat == action.CategoryExploit
+}
+
+// authorized reports whether some verified grant covers the target at or above
+// the action's tier. Coverage reuses the same scope-matching used for in-scope
+// targets, so a grant can be a CIDR/domain/url just like a scope entry.
+func (g *Guard) authorized(target string, tier action.RiskLevel) bool {
+	for _, gr := range g.grants {
+		if tier <= gr.MaxTier && (engagement.Scope{InScope: gr.Targets}).Contains(target) {
+			return true
+		}
+	}
+	return false
+}
+
+// categoryIn reports whether cat is named in a RoE category list. List entries are
+// validated to known taxonomy names at engagement load, so a parse error here is
+// treated as no-match (the load-time check is the real guard).
+func categoryIn(list []string, cat action.Category) bool {
 	for _, s := range list {
-		if strings.EqualFold(strings.TrimSpace(s), v) {
+		if c, err := action.ParseCategory(s); err == nil && c == cat {
 			return true
 		}
 	}
