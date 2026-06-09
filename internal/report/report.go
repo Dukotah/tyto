@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dukotah/strix/internal/engagement"
-	"github.com/dukotah/strix/internal/state"
+	"github.com/dukotah/tyto/internal/engagement"
+	"github.com/dukotah/tyto/internal/state"
 )
 
 // Render produces a Markdown report for an engagement and its findings.

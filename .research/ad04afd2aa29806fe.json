@@ -1,0 +1,138 @@
+{
+  "facet": "methodology",
+  "summary": "The research-validated way to make a local model plan like a methodical pentester is NOT to stuff PTES/OWASP/ATT&CK text into the system prompt and hope for the best. It is to encode methodology as an explicit, machine-readable state machine that lives in deterministic Go code, and feed the model only the small, relevant slice at each step. Two 2024-2025 papers prove this directly: PentestGPT's Pentesting Task Tree (PTT) and the \"Guided Reasoning with Structured Attack Trees\" paper, which built a 30-node tree derived from MITRE ATT&CK and lifted subtask completion for an 8B local model (Llama-3-8B) from 13.5% to 71.8% while cutting LLM calls ~56%. That is exactly strix's situation: a small local model that improvises badly but follows a scaffold well. Concretely, strix should ship a curated, versioned methodology pack as embedded JSON/YAML (Go embed.FS): a phase model (PTES 7 phases as the backbone, with NIST SP 800-115's Planning/Execution/Post-Execution and the Cyber Kill Chain as coarse cross-walks), a technique catalog keyed to MITRE ATT&CK technique IDs (T-codes), and a web checklist from OWASP WSTG v4.2 (which has a clean community JSON form: code/testcase/details/tags) cross-referenced to OWASP Top 10 2021 + CWE. The planner becomes a tree walker: deterministic Go tracks an attack/task tree whose nodes carry status (todo/in-progress/done/failed), findings, and a small set of \"next possible techniques\"; each cycle the engine injects only the current phase, the frontier of eligible next techniques (gated by the Scope Guard's category/risk before they ever reach the model), and recent state, then asks the model to pick and parameterize one. This keeps the LLM doing what it is good at (choosing among grounded options, mapping a service+version to a technique) and keeps methodology, ordering, and safety in deterministic code. ATT&CK ships as ~30-60MB STIX 2.1 JSON (Enterprise v17, May 2025: 15 tactics / 222 techniques / 475 sub-techniques) that you fetch once, prune to a red-team subset, and embed — fully offline, no API key, CC-licensed.",
+  "recommendations": [
+    {
+      "name": "PTES as the planner's phase backbone (encoded as a YAML/JSON phase model + state machine in Go)",
+      "why": "PTES's 7 phases (pre-engagement, intelligence gathering, threat modeling, vulnerability analysis, exploitation, post-exploitation, reporting) are the standard mental model for an end-to-end engagement and map cleanly onto strix's existing recon->scan->exploit category vocabulary. Encode it as a small ordered phase list where each phase declares: allowed action categories, entry/exit conditions (e.g. 'enter exploitation only when at least one validated vuln exists in state'), and the technique groups in scope. The engine drives phase transitions deterministically; the model only chooses actions WITHIN the current phase. This is the single highest-leverage, lowest-effort piece — it is just data plus a transition function, very tractable to vibe-code incrementally. Tradeoff: PTES is a stable but informally maintained standard (no official machine-readable release), so you author the phase model yourself once (~1 file).",
+      "license": "PTES is a public community standard (no restrictive license); your encoding is your own code",
+      "free_local_no_api": "yes",
+      "language": "Go + embedded YAML/JSON data file",
+      "integration": "embed (go:embed a phases.yaml; a PhaseModel type in a new internal/methodology package drives the engine's loop and constrains what the planner is asked)",
+      "maturity": "PTES stable since ~2014, still the de-facto reference in 2025 pentest-standard roundups; informally maintained"
+    },
+    {
+      "name": "MITRE ATT&CK (STIX 2.1) pruned into a red-team Technique Catalog keyed by T-code",
+      "why": "ATT&CK is the only one of the five frameworks that ships as first-class machine-readable data (STIX 2.1 JSON, mitre-attack/attack-stix-data, Enterprise v17.1 May 2025: 15 tactics, 222 techniques, 475 sub-techniques). It gives you stable IDs, descriptions, tactic groupings, and crucially the 'related techniques' edges that the structured-attack-tree paper used to define each node's 'next possible tasks'. Download once, parse the STIX bundle, drop blue-team/cloud/hardware/social-eng objects, and emit a compact strix-native technique catalog (id, name, tactic, description, next[], suggested_tools[], default_risk, default_category). The tactic->kill-chain->PTES-phase crosswalk lets one catalog serve all the frameworks. Tradeoff: full STIX is ~tens of MB and verbose; prune aggressively (the paper used just 30 nodes and beat full PentestGPT). ATT&CK tactics are unordered, so YOU impose ordering via the PTES phase model, not ATT&CK.",
+      "license": "MIT-style ATT&CK Terms of Use (free to use/redistribute with attribution); STIX data on GitHub",
+      "free_local_no_api": "yes",
+      "language": "data is JSON/STIX 2.1; parse in Go (encoding/json over the STIX bundle, no STIX library needed for a one-time prune script)",
+      "integration": "embed (run an offline build-time generator that fetches+prunes the STIX JSON to internal/methodology/data/techniques.json, then go:embed it; never fetched at runtime so it stays air-gapped)",
+      "maturity": "actively maintained by MITRE, versioned releases, the industry standard; v17 May 2025"
+    },
+    {
+      "name": "Pentesting Task Tree / Structured Attack Tree as the planner's core data structure (the key technique, not a tool)",
+      "why": "This is the research-proven mechanism that turns a weak local model into a methodical one. PentestGPT (USENIX Security 2024) introduced the PTT — an attributed tree where nodes are subtasks carrying status, tool, and finding type — to preserve global strategy and prevent the LLM from losing the thread or hallucinating tree edits. The follow-up 'Guided Reasoning with Structured Attack Trees' (arXiv 2509.07939, 2025) made the tree EXTERNAL and ATT&CK-derived (30 nodes) and only let the LLM (a) select among the node's predefined next-tasks and (b) update leaf status/findings. Result on a local 8B model: subtask completion 13.5%->71.8% (Gemini 16.5%->72.8%), ~56% fewer prompts. strix should adopt the external-tree variant verbatim in Go: the engine owns the tree, the Scope Guard prunes out-of-scope/over-risk branches BEFORE the frontier is shown, and the model just picks+parameterizes. This is the architectural heart of the 'local-model brain' differentiator. Tradeoff: more engine work than a single prompt, but each piece (tree type, frontier computation, status update) is small and testable — ideal for incremental vibe-coding.",
+      "license": "academic technique (free to implement); no code dependency required",
+      "free_local_no_api": "yes",
+      "language": "Go (tree lives in internal/state alongside the existing State; nodes reference technique-catalog IDs)",
+      "integration": "port (implement the data structure + frontier/update logic in Go; reuse the existing JSON-proposal planner contract, just feed it the frontier instead of 'all tools')",
+      "maturity": "published & validated 2024-2025; strix would be implementing the idea, not depending on their code"
+    },
+    {
+      "name": "OWASP WSTG v4.2 as the web-app testing checklist (community JSON form)",
+      "why": "For the web/app side ATT&CK is thin; WSTG is the canonical web methodology. There is no official JSON, but a clean community export exists (AttackForge/TestSuites OWASP/WSTG/v4.2/owasp_wstg.json) with fields code (e.g. WSTG-INFO-05), testcase, details, tags — category is encoded in the code prefix (INFO/CONF/ATHN/SESS/INPV/...). Convert this into strix web-technique nodes the same shape as the ATT&CK catalog so the tree walker is framework-agnostic. The official OWASP/wstg repo also publishes a markdown checklist you can parse if you prefer first-party source. This makes strix methodical on web targets (it currently only has a TCP portscan), addressing the Burp/ZAP competitive axis.",
+      "license": "WSTG is CC BY-SA 4.0 (OWASP); the AttackForge JSON export mirrors it",
+      "free_local_no_api": "yes",
+      "language": "JSON source; parse/convert in Go",
+      "integration": "embed (one-time convert WSTG JSON -> strix web-technique catalog, go:embed it; cross-reference each item to OWASP Top 10 2021 + CWE for reporting)",
+      "maturity": "WSTG v4.2 current/stable; official OWASP project, widely used"
+    },
+    {
+      "name": "OWASP Top 10 2021 + CWE crosswalk for finding classification & reporting (not for planning)",
+      "why": "Top 10 is a risk-prioritization taxonomy, not a procedure, so it belongs in the REPORTING/finding layer, not the planner frontier. Use the official CWE->Top10 category mappings (CWE-1344 'Weaknesses in OWASP Top Ten 2021', and per-category CWE lists like CWE-1347 for A03 Injection) to auto-tag findings with a Top 10 category + CWE id. This makes strix's markdown report speak the language clients and the big-dog scanners (Nessus/Burp) use, and lets the planner reason about coverage ('which Top 10 categories are untested?'). Tradeoff: the WSTG<->Top10<->CWE mapping is partly manual; ship a small static mapping table rather than chasing a non-existent canonical machine-readable file.",
+      "license": "OWASP Top 10 CC BY-SA; CWE is free (MITRE)",
+      "free_local_no_api": "yes",
+      "language": "static JSON/Go map table",
+      "integration": "embed (a coverage/classification table referenced by internal/report and internal/state.Finding)",
+      "maturity": "Top 10 2021 stable (2025 edition in progress); CWE actively maintained"
+    },
+    {
+      "name": "NIST SP 800-115 + Lockheed Cyber Kill Chain as coarse cross-walk metadata (governance & coverage views, not separate trees)",
+      "why": "Don't build separate planners for these — they are lower-resolution than PTES/ATT&CK and add no new actions. NIST SP 800-115's 3 phases (Planning / Execution / Post-Execution) and its testing-vs-examination distinction are best used to (a) justify strix's scope-guard + authorization gate as standards-compliant, and (b) label phases for audit/compliance reporting. The Cyber Kill Chain's 7 linear stages (Recon, Weaponization, Delivery, Exploitation, Installation, C2, Actions-on-Objectives) give a clean, ordered, executive-friendly progress view and map loosely onto ATT&CK tactics (its last 5 stages cover most Enterprise tactics). Encode both as a tiny lookup mapping each technique/phase to a NIST phase and a kill-chain stage — one extra column in the technique catalog — so reports can render any of the four lenses from one engine. Tradeoff: kill-chain is malware-centric and dated; use it for visualization, not decision logic.",
+      "license": "NIST SP 800-115 is US-Gov public domain; Cyber Kill Chain is a Lockheed Martin trademark/concept (free to reference)",
+      "free_local_no_api": "yes",
+      "language": "static mapping table in the technique catalog",
+      "integration": "embed (extra fields nist_phase, killchain_stage on each catalog entry; used by internal/report only)",
+      "maturity": "800-115 is from 2008 but still the cited US-gov reference in 2025/2026; kill-chain stable since 2011"
+    }
+  ],
+  "pitfalls": [
+    "Do NOT dump the full frameworks into the system prompt. A local 8B- class model will drown — the structured-attack-tree paper got its huge gains precisely by feeding only the current node's next-tasks, not the whole methodology. Prompt-stuffing causes the circular reasoning and lost-context failures PentestGPT documented.",
+    "Don't let the model own/edit the task tree. Both papers found LLMs corrupt tree structure via hallucination. The deterministic Go engine must own the tree; the model may only (a) select from a precomputed frontier and (b) report status/findings for the leaf it acted on.",
+    "Methodology must never become a second authority that can widen scope. The Scope Guard stays the sole gate: prune the technique frontier through the guard BEFORE showing it to the model, so an in-catalog-but-out-of-scope/over-risk technique is simply never offered. Methodology suggests; the guard disposes.",
+    "ATT&CK tactics are explicitly unordered and the framework is detection-oriented, not an attack playbook. Don't use ATT&CK alone for sequencing — impose order via the PTES phase model. Also prune blue-team/cloud/hardware/social-engineering objects or the catalog balloons and the model gets irrelevant options.",
+    "No official machine-readable WSTG or OWASP-Top10<->WSTG<->CWE mapping exists. Treat the community JSON (AttackForge) and CWE category pages as inputs to a one-time, version-pinned conversion you own and embed — don't pretend there's a canonical feed to sync.",
+    "Pin and vendor framework versions (ATT&CK v17.1, WSTG v4.2, Top 10 2021). Fetch/convert at build time only and go:embed the result. Runtime fetching breaks the air-gapped/offline hard constraint and introduces an implicit network dependency.",
+    "Keep the methodology pack and the tool registry decoupled but linked: a technique referencing a tool the operator hasn't installed must degrade gracefully (mark node blocked/needs-tool), not crash the plan loop. The catalog's suggested_tools must be hints, not hard requirements."
+  ],
+  "open_questions": [
+    "How much of the tree should be precomputed vs. expanded lazily? A fixed ~30-node ATT&CK tree (paper's choice) is simple and proven; a dynamically grown tree (PentestAgent style, expanded per discovered service+version) is more powerful but harder to vibe-code and to keep the Scope Guard in front of. Recommend starting fixed, adding lazy expansion later.",
+    "Should strix attempt RAG over exploit corpora (ExploitDB, CVE/AVD, GitHub PoCs) as PentestAgent/VulnBot do, given the offline+no-API constraint? Feasible only with a locally embedded, pre-indexed snapshot — decide whether a bundled vuln/exploit index is in scope for v1 or a later facet (overlaps with the embeddings/RAG and tooling facets).",
+    "Which framework's vocabulary becomes strix's PRIMARY internal taxonomy for action.Category? Today it's an open recon/scan/exploit string set; aligning it to ATT&CK tactics or PTES phases (vs. a strix-native superset) is a schema decision that ripples into the Scope Guard, planner prompt, and report.",
+    "How to encode phase entry/exit and technique preconditions expressively without inventing a whole rules DSL? Options: simple declarative predicates over state (has_open_port, has_validated_vuln) vs. embedded expression eval. Affects how much logic stays data vs. Go code.",
+    "Update cadence: ATT&CK ships ~2x/year and WSTG/Top10 less often. Define a maintainer workflow (a make/go-generate target that re-fetches and re-prunes) so the embedded packs don't silently rot, while preserving reproducible offline builds."
+  ],
+  "sources": [
+    {
+      "title": "PentestGPT: Evaluating and Harnessing LLMs for Automated Penetration Testing (USENIX Security 2024) — introduces the Pentesting Task Tree (PTT)",
+      "url": "https://www.usenix.org/system/files/usenixsecurity24-deng.pdf"
+    },
+    {
+      "title": "Guided Reasoning in LLM-Driven Penetration Testing Using Structured Attack Trees (arXiv 2509.07939, 2025) — ATT&CK-derived external 30-node tree; 13.5%->71.8% on Llama-3-8B",
+      "url": "https://arxiv.org/html/2509.07939v2"
+    },
+    {
+      "title": "PentestAgent: Incorporating LLM Agents to Automated Penetration Testing (arXiv 2411.05185) — hierarchical knowledge base + RAG planning",
+      "url": "https://arxiv.org/html/2411.05185v1"
+    },
+    {
+      "title": "mitre-attack/attack-stix-data — official ATT&CK STIX 2.1 JSON (machine-readable)",
+      "url": "https://github.com/mitre-attack/attack-stix-data"
+    },
+    {
+      "title": "ATT&CK Data & Tools — MITRE (data formats, access)",
+      "url": "https://attack.mitre.org/resources/attack-data-and-tools/"
+    },
+    {
+      "title": "MITRE ATT&CK v17 release notes (v17.0/17.1, May 2025: 15 tactics / 222 techniques / 475 sub-techniques)",
+      "url": "https://industrialcyber.co/threats-attacks/mitre-attck-v17-offers-broader-platform-coverage-enhanced-defensive-guidance-threat-intelligence-tracking/"
+    },
+    {
+      "title": "OWASP Web Security Testing Guide (WSTG) — official project & checklist",
+      "url": "https://owasp.org/www-project-web-security-testing-guide/"
+    },
+    {
+      "title": "OWASP/wstg checklist (markdown, first-party machine-parseable)",
+      "url": "https://github.com/OWASP/wstg/blob/master/checklists/checklist.md"
+    },
+    {
+      "title": "AttackForge/TestSuites OWASP WSTG v4.2 JSON (community machine-readable export)",
+      "url": "https://github.com/AttackForge/TestSuites/blob/main/OWASP/WSTG/v4.2/owasp_wstg.json"
+    },
+    {
+      "title": "OWASP Top 10:2021 — introduction & categories",
+      "url": "https://owasp.org/Top10/2021/"
+    },
+    {
+      "title": "CWE-1344: Weaknesses in OWASP Top Ten (2021) — CWE<->Top10 mapping (machine-readable)",
+      "url": "https://cwe.mitre.org/data/definitions/1344.html"
+    },
+    {
+      "title": "NIST SP 800-115: Technical Guide to Information Security Testing and Assessment (final)",
+      "url": "https://csrc.nist.gov/pubs/sp/800/115/final"
+    },
+    {
+      "title": "Cyber Kill Chain vs MITRE ATT&CK — phase mapping (Aqua Security)",
+      "url": "https://www.aquasec.com/cloud-native-academy/application-security/cyber-kill-chain/"
+    },
+    {
+      "title": "PTES — Penetration Testing Execution Standard, 7 stages overview",
+      "url": "https://datami.ee/blog/penetration-testing-execution-standard-7-ptes-stages/"
+    },
+    {
+      "title": "5 Penetration Testing Standards to Know in 2025 (PTES/OWASP/NIST/OSSTMM context)",
+      "url": "https://www.sprocketsecurity.com/blog/pentesting-standards-2025"
+    }
+  ]
+}

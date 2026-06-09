@@ -1,0 +1,198 @@
+{
+  "facet": "recon-tools",
+  "summary": "For strix's external recon phase, the ProjectDiscovery (PD) suite is the clear winner: all the relevant tools are MIT-licensed, written in Go, and importable as libraries directly into strix's single binary — no shelling out, no separate processes, no API keys required for their core (active/local) functionality. The highest-signal local pipeline is: subfinder (passive subdomain enum, ~14 sources work with zero API keys) -> dnsx (resolve + DNS records, pure Go) -> naabu (port discovery) -> httpx (HTTP probing + tech detection) -> katana (crawl/endpoint discovery), with shuffledns+a wordlist for active DNS brute-force to find what passive misses. Each PD library exposes a runner.Options struct + RunEnumeration/Crawl pattern, mapping cleanly onto strix's existing tool.Tool interface (one Go wrapper per tool, MaxRisk tagged so the Scope Guard gates active vs passive). OWASP Amass v5 (Apache-2.0, Go) is more powerful for deep asset-graph mapping but as of its Sept-2025 v5 rewrite it became a database-backed engine with a query sub-command model that is harder to embed and has had output-handling regressions — recommend shelling out to it (or deferring it) rather than embedding. theHarvester (Python, AGPL/GPL) duplicates PD coverage and its high-value modules need API keys, so it is low priority and would require shell-out + a Python runtime, breaking the single-static-binary goal. Certificate Transparency is already covered offline-friendly via subfinder's keyless crtsh source; a fully air-gapped CT capability is a large undertaking (TB-scale logs) and not worth it for v1 — note crt.sh itself is a network service, so \"offline\" means querying it at engagement time, not air-gapped. Net: embed the PD Go libraries; that single decision gives strix recon parity with the PD CLI workflow inside one static binary.",
+  "recommendations": [
+    {
+      "name": "subfinder (ProjectDiscovery)",
+      "why": "Highest-signal passive subdomain enumeration and the recommended first stage. ~14 sources work with NO API keys (crtsh, alienvault, anubis, commoncrawl, dnsdumpster, hackertarget, rapiddns, waybackarchive, etc.), so it delivers real results offline/keyless; adding free keys later only improves coverage. Import github.com/projectdiscovery/subfinder/v2/pkg/runner, build runner.Options, call RunEnumeration — wraps directly into strix's tool.Tool (Category recon, MaxRisk low, since it is passive/no direct target contact). Actively maintained (v2.14.x, 2026). Tradeoff: passive sources query third-party services over the network, so it is not air-gapped; the Scope Guard should treat it as recon-only and the operator should accept outbound OSINT queries in the RoE.",
+      "license": "MIT",
+      "free_local_no_api": "yes",
+      "integration": "go-lib (import .../subfinder/v2/pkg/runner)",
+      "language": "Go",
+      "maturity": "Actively maintained, very popular (the de-facto passive enum tool), production-ready, v2.14.x in 2026"
+    },
+    {
+      "name": "httpx (ProjectDiscovery)",
+      "why": "The single highest-value web-recon probe: takes resolved hosts/subdomains and reports live HTTP(S) services, status, title, TLS/SAN, CDN/WAF, and technology detection (Wappalyzer-style fingerprints) — turns a domain list into a prioritized attack surface. Import github.com/projectdiscovery/httpx/runner, fill Options (incl. TechDetect), pass to a runner and call RunEnumeration. No API keys; fully local (it just makes HTTP requests to in-scope targets). Map to tool.Tool as Category recon/scan, MaxRisk low-medium (it does touch the target). Maintained alongside the suite. Tradeoff: it actively connects to targets, so the Scope Guard must confirm each host is in scope.",
+      "license": "MIT",
+      "free_local_no_api": "yes",
+      "integration": "go-lib (import .../httpx/runner)",
+      "language": "Go",
+      "maturity": "Actively maintained, extremely popular, production-ready"
+    },
+    {
+      "name": "dnsx (ProjectDiscovery)",
+      "why": "Pure-Go DNS toolkit (retryabledns) for resolving subfinder output, pulling A/AAAA/CNAME/MX/TXT/NS records, and wildcard filtering — the connective tissue between passive enum and port/HTTP probing. Importable (github.com/projectdiscovery/dnsx ... /libs/dnsx), no CGO, no API keys, works with any user-supplied resolvers (can point at a local/internal resolver for air-gapped DNS). Cleanest, lowest-risk PD library to embed first. Tradeoff: needs reachable resolvers; bundle a sane default resolver list.",
+      "license": "MIT",
+      "free_local_no_api": "yes",
+      "integration": "go-lib (import .../dnsx libs)",
+      "language": "Go",
+      "maturity": "Actively maintained, production-ready"
+    },
+    {
+      "name": "naabu (ProjectDiscovery)",
+      "why": "Go port scanner to replace/augment strix's built-in TCP connect scanner with a faster, host-deduplicating engine feeding httpx. Importable via github.com/projectdiscovery/naabu/v2/pkg/runner (Options). KEY BUILD NOTE for strix's single-static-binary goal: SYN scanning needs libpcap (CGO + root/admin), which breaks pure-Go static builds and is unavailable on Windows; build CGO_ENABLED=0 and use CONNECT scan (naabu auto-falls back to CONNECT on Windows / non-root) to stay pure-Go and cross-platform. MaxRisk medium, Category scan. Tradeoff: without libpcap you lose fast SYN scanning; for v1 the connect-scan tradeoff is worth keeping the static binary. Given strix already has a connect scanner, naabu is a nice-to-have, not urgent.",
+      "license": "MIT",
+      "free_local_no_api": "yes",
+      "integration": "go-lib (import .../naabu/v2/pkg/runner, build CGO_ENABLED=0 for connect-only pure-Go)",
+      "language": "Go",
+      "maturity": "Actively maintained (v2.6.x 2026), popular, production-ready"
+    },
+    {
+      "name": "katana (ProjectDiscovery)",
+      "why": "Next-gen crawler/spider for endpoint, parameter, and JS-asset discovery — expands attack surface beyond hostnames into URLs that later web-vuln tooling (e.g. nuclei) can act on. Library API: import github.com/projectdiscovery/katana/pkg/engine/standard, set Options, call Crawl. Standard (non-headless) crawling is fully local/keyless. Two caveats: headless mode needs a local Chrome/Chromium (-system-chrome) which conflicts with the single-binary ideal, and the optional ML knowledge-base classifier auto-downloads a model from Hugging Face on first use — disable that path for air-gapped use and rely on standard crawl. MaxRisk medium (actively fetches target pages).",
+      "license": "MIT",
+      "free_local_no_api": "partial",
+      "integration": "go-lib (import .../katana/pkg/engine/standard); use standard (non-headless) mode to stay keyless/offline",
+      "language": "Go",
+      "maturity": "Actively maintained (v1.6.x 2026), popular, production-ready"
+    },
+    {
+      "name": "shuffledns + wordlist (ProjectDiscovery, wraps massdns)",
+      "why": "Active DNS brute-force/permutation to discover subdomains passive sources miss, with robust wildcard filtering — the highest-signal ACTIVE recon step after passive enum. Importable (github.com/projectdiscovery/shuffledns), fully offline with a local wordlist + resolver list and NO API keys. Caveat: it is a wrapper around massdns, an external C binary, so strix must ship/locate a massdns binary (shell-out dependency) — not pure-Go. MaxRisk medium-high (noisy active queries); gate behind RoE. Alternative for a pure-Go path: dnsx also supports brute-force/wordlist mode, avoiding the massdns dependency at some speed cost.",
+      "license": "MIT",
+      "free_local_no_api": "yes",
+      "integration": "go-lib for orchestration, but requires external massdns binary (shell-out); or use dnsx brute mode to stay pure-Go",
+      "language": "Go (+ massdns C dependency)",
+      "maturity": "Actively maintained, production-ready"
+    },
+    {
+      "name": "asnmap / mapcidr (ProjectDiscovery)",
+      "why": "asnmap maps an organization's network ranges from ASN/org/IP (great for defining/expanding the IP attack surface from a company name); mapcidr expands/aggregates CIDR ranges for feeding naabu. Both are MIT Go CLIs AND libraries (github.com/projectdiscovery/asnmap, .../mapcidr). asnmap's data lookups hit a PD/WHOIS-style service over the network (not air-gapped) and the broad org->range expansion can pull in out-of-scope assets — so wire it tightly to the Scope Guard. Useful but secondary to the subfinder/httpx core.",
+      "license": "MIT",
+      "free_local_no_api": "partial",
+      "integration": "go-lib (import .../asnmap, .../mapcidr)",
+      "language": "Go",
+      "maturity": "Actively maintained, production-ready"
+    },
+    {
+      "name": "OWASP Amass v5",
+      "why": "The most thorough attack-surface mapper (asset graph via the Open Asset Model, passive+active, persistent asset DB) and Apache-2.0 Go. BUT v5 (Sept 2025) was rewritten into a collection-engine + database + query sub-command (amass subs -names) architecture that is significantly harder to embed than the PD runner pattern, with reported v5 output/flag regressions. Recommend SHELL-OUT to the amass CLI (Category recon, parse its output/DB) rather than importing v5 as a library for now — or defer until v5 stabilizes. It overlaps subfinder for passive enum, so its differentiator is deep graph mapping, not day-1 value. Free and runs locally; some sources benefit from optional keys but core works without.",
+      "license": "Apache-2.0",
+      "free_local_no_api": "yes",
+      "integration": "shell-out CLI (v5 library API is awkward to embed; revisit later)",
+      "language": "Go",
+      "maturity": "Actively maintained but v5 is a recent disruptive rewrite with rough edges (2025-2026)"
+    },
+    {
+      "name": "theHarvester",
+      "why": "Broad OSINT (emails, names, subdomains) and well-known, but a poor fit for strix's constraints: it is Python (breaks the single-static-binary goal — needs a Python runtime to shell out to), licensed GPL-family (more restrictive than the MIT PD suite), and most of its high-value modules (Censys, GitHub, VirusTotal, SecurityTrails, Bing) require API keys; the keyless modules largely duplicate subfinder. Low priority; consider only later if email/employee OSINT becomes an explicit goal, via shell-out.",
+      "license": "AGPL/GPL-family (GPL-2.0 historically)",
+      "free_local_no_api": "partial",
+      "integration": "shell-out CLI (requires Python runtime)",
+      "language": "Python",
+      "maturity": "Actively maintained, popular, but constraint-misaligned for strix"
+    },
+    {
+      "name": "Certificate Transparency (crt.sh via subfinder; certspotter/ct-go for advanced)",
+      "why": "CT is one of the best subdomain signals and is ALREADY covered offline-friendly and keyless through subfinder's built-in crtsh source — so no separate integration is needed for v1. crt.sh itself is a remote service (not air-gapped). A truly local CT capability (SSLMate certspotter or google/certificate-transparency-go scanners, or bulk scrape-ct-log) means ingesting TB-scale logs and is disproportionate effort for a pentest recon phase. Recommendation: rely on subfinder's crtsh source now; revisit a dedicated CT scanner only if you need air-gapped CT or near-real-time monitoring. certificate-transparency-go is Apache-2.0 and importable if you go that route.",
+      "license": "crt.sh (service, free); certificate-transparency-go Apache-2.0; certspotter MPL/Apache",
+      "free_local_no_api": "partial",
+      "integration": "already via subfinder crtsh source; optional go-lib (certificate-transparency-go) for advanced/air-gapped",
+      "language": "Go (libraries)",
+      "maturity": "Mature; but full local CT ingestion is heavyweight"
+    }
+  ],
+  "pitfalls": [
+    "\"Offline\" is nuanced: passive sources (subfinder crtsh/commoncrawl/etc., asnmap, amass passive) query third-party services over the internet — they are keyless and free but NOT air-gapped. Truly air-gapped recon is limited to active probing of in-scope targets (dnsx against an internal resolver, naabu connect scan, httpx, katana standard crawl). Make the Scope Guard / RoE distinguish 'passive-OSINT-outbound-allowed' from 'air-gapped'.",
+    "naabu SYN scanning needs libpcap (CGO + root/admin) which breaks the pure-Go single-static-binary goal and is unavailable on Windows. Build CGO_ENABLED=0 and use CONNECT scan to stay portable; document that fast SYN scanning is a non-static-build opt-in.",
+    "katana headless mode needs a local Chrome/Chromium binary (defeats single-binary) and its ML knowledge-base classifier auto-downloads a model from Hugging Face on first use — disable both for air-gapped runs; use standard crawl mode.",
+    "shuffledns is a massdns wrapper, not pure Go — it requires shipping/locating an external massdns C binary. If you want to keep everything in-binary, use dnsx's brute-force mode instead (slower) rather than shuffledns.",
+    "Amass v5 (Sept 2025) is a disruptive rewrite: file-output via `enum -o` no longer works as before (you must query the DB via `amass subs -names`), and some flags (e.g. -nf) were unimplemented. Don't assume v4 docs/automation apply; pin a version and test, and prefer shell-out over embedding v5 as a library for now.",
+    "Active recon (naabu, httpx, katana, shuffledns, amass active mode) makes direct, sometimes noisy, contact with targets and brute-force can balloon scope. Every one of these must be gated by the Scope Guard per-host/per-CIDR and tagged with an appropriate MaxRisk so the deterministic guard — not the LLM — decides if it may run.",
+    "asnmap org->range and amass can expand the asset set to IPs/domains the client never authorized. Re-validate every discovered asset against the engagement scope before any active tool touches it (recon can discover out-of-scope assets that must NOT be scanned).",
+    "theHarvester and massdns drag in non-Go runtimes (Python / C binary), undermining the single-static-binary vision — weigh that cost before adding them.",
+    "Pin PD library versions in go.mod: they share many internal projectdiscovery/utils modules and version drift across subfinder/httpx/dnsx/naabu/katana can cause dependency conflicts in one binary. Upgrade them together."
+  ],
+  "open_questions": [
+    "Single-binary purity vs. capability: accept CGO/external binaries (libpcap for naabu SYN, massdns for shuffledns, Chrome for katana headless) for higher signal, or stay strictly pure-Go static and take the connect-scan/standard-crawl tradeoffs?",
+    "Air-gapped vs. passive-OSINT: should strix's default recon profile allow outbound queries to third-party OSINT sources (crt.sh, commoncrawl, asnmap), or must the default be fully air-gapped (active-only against in-scope targets)? This shapes the Scope Guard categories and the RoE schema.",
+    "Embed vs. shell-out policy: confirm the preference to embed PD Go libraries (tighter integration, single binary) over shelling out to their CLIs — embedding couples strix to PD internal module versions and increases build complexity.",
+    "Amass: include now via shell-out, or defer until the v5 rewrite stabilizes? It overlaps subfinder for passive enum and its main value (asset-graph DB) is a larger integration.",
+    "Is employee/email OSINT (theHarvester's niche) in scope for strix's vision? If not, theHarvester can be dropped entirely, keeping the stack all-Go/MIT.",
+    "Wordlist/resolver provisioning: which DNS brute-force wordlist and resolver list ship with strix, and how are they kept current offline (e.g. bundled vs. operator-supplied)?",
+    "Do you want a dedicated air-gapped Certificate Transparency ingestion capability (heavyweight, TB-scale) or is subfinder's crtsh source sufficient for v1?"
+  ],
+  "sources": [
+    {
+      "title": "projectdiscovery/subfinder (GitHub) — MIT, Go library runner, keyless sources",
+      "url": "https://github.com/projectdiscovery/subfinder"
+    },
+    {
+      "title": "subfinder API Key Configuration / keyless sources (DeepWiki)",
+      "url": "https://deepwiki.com/projectdiscovery/subfinder/4-api-key-configuration"
+    },
+    {
+      "title": "subfinder v2 Go package (pkg.go.dev)",
+      "url": "https://pkg.go.dev/github.com/projectdiscovery/subfinder/v2"
+    },
+    {
+      "title": "projectdiscovery/httpx (GitHub) — HTTP toolkit, library usage",
+      "url": "https://github.com/projectdiscovery/httpx"
+    },
+    {
+      "title": "httpx runner package (pkg.go.dev) — Options/RunEnumeration/TechDetect",
+      "url": "https://pkg.go.dev/github.com/projectdiscovery/httpx/runner"
+    },
+    {
+      "title": "projectdiscovery/dnsx (GitHub) — Go DNS toolkit",
+      "url": "https://github.com/projectdiscovery/dnsx"
+    },
+    {
+      "title": "projectdiscovery/naabu (GitHub) — port scanner, libpcap/CONNECT, runner API, MIT",
+      "url": "https://github.com/projectdiscovery/naabu"
+    },
+    {
+      "title": "Naabu Overview — ProjectDiscovery Docs (libpcap requirement, SYN/CONNECT/UDP)",
+      "url": "https://docs.projectdiscovery.io/tools/naabu/overview"
+    },
+    {
+      "title": "projectdiscovery/katana (GitHub) — crawler, library Crawl API, headless/Chrome, MIT",
+      "url": "https://github.com/projectdiscovery/katana"
+    },
+    {
+      "title": "projectdiscovery/shuffledns (GitHub) — massdns wrapper, active brute-force",
+      "url": "https://github.com/projectdiscovery/shuffledns"
+    },
+    {
+      "title": "projectdiscovery/asnmap (GitHub) — ASN->ranges, MIT, CLI+library",
+      "url": "https://github.com/projectdiscovery/asnmap"
+    },
+    {
+      "title": "OWASP Amass Project docs — engine + asset DB + Open Asset Model, Apache-2.0",
+      "url": "https://owasp-amass.github.io/docs/"
+    },
+    {
+      "title": "amass v5 config Go package (pkg.go.dev) — v5 published Sept 2025",
+      "url": "https://pkg.go.dev/github.com/owasp-amass/amass/v5/config"
+    },
+    {
+      "title": "Amass 5.0.0 Usage for Recon (Medium) — v5 subs query model / output changes",
+      "url": "https://medium.com/@marduk.i.am/amass-5-0-0-usage-for-recon-8041bc727480"
+    },
+    {
+      "title": "amass v5 flag/output regressions (GitHub issue #1086)",
+      "url": "https://github.com/owasp-amass/amass/issues/1086"
+    },
+    {
+      "title": "laramies/theHarvester (GitHub) — Python OSINT, modules/API keys",
+      "url": "https://github.com/laramies/theHarvester"
+    },
+    {
+      "title": "Let's Encrypt — Certificate Transparency (CT) Logs overview",
+      "url": "https://letsencrypt.org/docs/ct-logs/"
+    },
+    {
+      "title": "SSLMate/certspotter (GitHub) — lightweight CT log monitor",
+      "url": "https://github.com/SSLMate/certspotter"
+    },
+    {
+      "title": "google/certificate-transparency-go (SourceForge mirror) — CT client/scanner libs",
+      "url": "https://sourceforge.net/projects/cert-transparency-go.mirror/"
+    },
+    {
+      "title": "mpalmer/scrape-ct-log (GitHub) — bulk CT log download (Rust)",
+      "url": "https://github.com/mpalmer/scrape-ct-log"
+    }
+  ]
+}

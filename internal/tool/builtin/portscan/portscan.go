@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dukotah/strix/internal/action"
-	"github.com/dukotah/strix/internal/state"
+	"github.com/dukotah/tyto/internal/action"
+	"github.com/dukotah/tyto/internal/state"
 )
 
 // Tool implements a TCP connect port scan.

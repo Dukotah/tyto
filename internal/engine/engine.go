@@ -1,4 +1,4 @@
-// Package engine runs the orchestration loop that ties strix together:
+// Package engine runs the orchestration loop that ties tyto together:
 // plan -> guard -> execute -> record -> repeat. It owns dry-run behaviour and is
 // the only place actions flow from the planner, through the guard, to tools.
 package engine
@@ -8,13 +8,13 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/dukotah/strix/internal/action"
-	"github.com/dukotah/strix/internal/audit"
-	"github.com/dukotah/strix/internal/engagement"
-	"github.com/dukotah/strix/internal/guard"
-	"github.com/dukotah/strix/internal/planner"
-	"github.com/dukotah/strix/internal/state"
-	"github.com/dukotah/strix/internal/tool"
+	"github.com/dukotah/tyto/internal/action"
+	"github.com/dukotah/tyto/internal/audit"
+	"github.com/dukotah/tyto/internal/engagement"
+	"github.com/dukotah/tyto/internal/guard"
+	"github.com/dukotah/tyto/internal/planner"
+	"github.com/dukotah/tyto/internal/state"
+	"github.com/dukotah/tyto/internal/tool"
 )
 
 // Options tune one engine run.

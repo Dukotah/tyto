@@ -1,0 +1,205 @@
+{
+  "facet": "web-testing",
+  "summary": "For strix's web/API testing layer, the strongest fit is the ProjectDiscovery Go-native stack (katana for crawling, nuclei for templated vuln detection) plus a small set of best-in-class CLIs shelled out behind the existing Tool interface. katana and nuclei are MIT-licensed, written in Go, fully offline, need no API key for core use (the AI template-generation feature needs a PD key, but everything else does not), and both ship public Go SDKs (github.com/projectdiscovery/katana/pkg/... and github.com/projectdiscovery/nuclei/v3/lib) so strix can import them directly into the single static binary rather than shelling out. OWASP ZAP is the heavyweight \"Burp competitor\" engine: run it as a headless daemon (Docker or local zap.sh -daemon) and drive it from Go via the official zaproxy/zap-api-go client or its YAML Automation Framework — this gives a real intercepting-proxy active scanner, OpenAPI/SOAP import, and authenticated scans, which nuclei/katana alone do not. Round out coverage by shelling out to specialist tools: ffuf (Go, MIT) for content/parameter fuzzing, sqlmap (GPLv2, Python) for SQLi exploitation, and Arjun (AGPL-3.0, Python) for hidden-parameter discovery. Note two 2026 gotchas: dalfox v3 was rewritten in Rust (no longer a Go library; shell out to the binary), and jaeles is effectively unmaintained (last release 2023) so deprioritize it in favor of nuclei. Web scanners are intrusive (active scan, fuzzing, SQLi exploitation), so risk-gating must classify each tool/mode by RiskLevel and category and force destructive modes (sqlmap --os-shell, ZAP active scan, fuzzing) to high-risk gated behind the Scope Guard's ceiling, allowed-category, and per-host rate limits.",
+  "recommendations": [
+    {
+      "name": "nuclei (ProjectDiscovery)",
+      "why": "Primary templated web/API vuln scanner. 10k+ community YAML templates covering CVEs, misconfigs, exposures, default creds, and many WSTG/OWASP-Top-10 checks. Go-native with a real SDK (github.com/projectdiscovery/nuclei/v3/lib) so strix can embed it in-process and stream structured findings straight into internal/state/finding.go — no parsing CLI text. Severity field maps cleanly onto the guard's RiskLevel. Tradeoff: template scanning is signature-based (great recall on known issues, not a logic-flaw finder); the optional AI template generation needs a PD API key, so disable/avoid that path to stay key-free and offline. Ship a vendored template snapshot for air-gapped runs since nuclei-templates normally update over the network.",
+      "license": "MIT",
+      "free_local_no_api": "yes",
+      "language": "Go",
+      "integration": "go-lib (import github.com/projectdiscovery/nuclei/v3/lib) preferred; CLI fallback with -jsonl output. Wrap as a Tool, category=scan, MaxRisk derived from template severity/protocol.",
+      "maturity": "Very actively maintained 2025-2026, de-facto industry standard, RSAC 2025 sandbox finalist"
+    },
+    {
+      "name": "katana (ProjectDiscovery)",
+      "why": "Crawler/spider that feeds every other tool. Standard headless + non-headless modes, JS parsing, form/endpoint extraction, OpenAPI/JS-aware discovery. Go-native with a public library API (pkg/engine/standard, pkg/types, pkg/output) so strix can crawl in-process and emit a URL/endpoint corpus that katana->nuclei/ffuf/ZAP all consume. This is the canonical recon front-end (subfinder->httpx->katana->nuclei pipeline). Tradeoff: headless mode pulls in a Chromium dependency (heavier, less air-gap-friendly); default to non-headless and make headless an opt-in capability.",
+      "license": "MIT",
+      "free_local_no_api": "yes",
+      "language": "Go",
+      "integration": "go-lib (import pkg/engine/standard) preferred; CLI fallback. Tool category=recon/crawl, low-to-medium risk (passive-ish but does send requests).",
+      "maturity": "Actively maintained 2025-2026, widely used"
+    },
+    {
+      "name": "OWASP ZAP (ZAP by Checkmarx)",
+      "why": "The full intercepting-proxy active scanner — strix's answer to Burp. Run headless as a daemon and drive over its REST API from Go (github.com/zaproxy/zap-api-go, Apache-2.0) or via the YAML Automation Framework (zap.sh -cmd -autorun plan.yaml). Brings what nuclei/katana lack: active injection scanning, OpenAPI/SOAP/GraphQL import for API testing, spider+ajax-spider, authenticated/session-managed scans (form/JSON/HTTP/script auth), and passive scanning of proxied traffic. Strong OWASP Top 10 / WSTG coverage. Tradeoffs: JVM runtime (not a single static binary — run as sidecar daemon/Docker, not embedded); active scan is intrusive and slow; the daemon needs an api.key locally (set and pass it, not a cloud key).",
+      "license": "Apache-2.0",
+      "free_local_no_api": "yes",
+      "language": "Java (daemon); Go client for control",
+      "integration": "HTTP/RPC: launch zap.sh -daemon (or zaproxy/zap-stable Docker), control via zap-api-go. Model passive scan as medium risk, active scan/fuzzing as high risk gated by guard.",
+      "maturity": "Most widely used web app scanner, actively maintained by Checkmarx in 2025-2026"
+    },
+    {
+      "name": "ffuf",
+      "why": "Fast content/directory/vhost/parameter fuzzer. Go + MIT, so easy to bundle the binary; clean JSON output for parsing. Covers WSTG content-discovery (hidden dirs/files, backup files, admin panels) and can fuzz parameters/values. Pair with SecLists wordlists shipped offline. Tradeoff: no public stable Go SDK, so shell out to the binary; fuzzing is noisy/high-volume so it must be rate-limited and gated.",
+      "license": "MIT",
+      "free_local_no_api": "yes",
+      "language": "Go",
+      "integration": "shell-out CLI with -of json -o. Tool category=scan/discovery, medium-to-high risk (volume). Enforce -rate / -p delay via guard-driven config.",
+      "maturity": "Actively maintained 2025-2026, standard content-discovery tool"
+    },
+    {
+      "name": "sqlmap",
+      "why": "Best-in-class automated SQL injection detection and exploitation (DB takeover, data dump, --os-shell). No real OSS substitute. Fully offline, no API key. Tradeoffs: Python (not Go), GPLv2 (shell-out keeps strix's license unentangled — do NOT link/embed), and it is the most intrusive tool in the set: detection is one risk tier, but dumping/--os-shell is destructive and must be force-classified high-risk and category-gated. Has a REST API mode (sqlmapapi) if RPC is preferred over CLI.",
+      "license": "GPLv2 (dual-licensed; commercial option exists)",
+      "free_local_no_api": "yes",
+      "language": "Python",
+      "integration": "shell-out CLI (--batch --output-dir, parse JSON/CSV) or HTTP via sqlmapapi.py. Split into two Tools: sqli-detect (medium/high) and sqli-exploit (high, default-denied).",
+      "maturity": "Actively maintained 2025-2026 (long-standing standard)"
+    },
+    {
+      "name": "Arjun",
+      "why": "HTTP parameter discovery (~26k param wordlist) to surface hidden/undocumented parameters that katana/ZAP miss, expanding attack surface before fuzzing/injection. Offline, no API key. Tradeoffs: Python (shell out) and AGPL-3.0 — fine to invoke as a separate process, but never embed or statically link, since AGPL would force strix's source disclosure. Last release 2024 but stable and still standard.",
+      "license": "AGPL-3.0",
+      "free_local_no_api": "yes",
+      "language": "Python",
+      "integration": "shell-out CLI (-oJ json). Tool category=recon/discovery, low-medium risk. Keep as a separate process — AGPL means no embedding.",
+      "maturity": "Stable, lightly maintained (latest 2.2.7, Nov 2024)"
+    },
+    {
+      "name": "dalfox",
+      "why": "Focused XSS scanner (reflected/stored/DOM, DOM-based analysis, parameter mining). As of v3 (2026) it was rewritten in Rust — so it is NO LONGER a Go library you can import; treat it strictly as a shelled-out binary. MIT, offline, no key. Good complement for the XSS slice of OWASP Top 10 that nuclei templates cover less deeply. Tradeoff: the Go v2 branch only gets security backports now, so don't depend on a Go SDK; use the v3 binary CLI.",
+      "license": "MIT",
+      "free_local_no_api": "yes",
+      "language": "Rust (v3); Go (legacy v2 branch, backports only)",
+      "integration": "shell-out CLI (--format json). Tool category=scan, medium risk (active payload injection).",
+      "maturity": "Actively maintained 2025-2026 (v3.0.x, Rust rewrite June 2026)"
+    },
+    {
+      "name": "wapiti",
+      "why": "Black-box DAST covering SQLi, XSS, file disclosure, SSRF, command injection, etc. — a lighter, fully-OSS alternative engine to ZAP when you don't want the JVM. GPLv2, Python, offline, no key. Actively maintained (3.3.0, May 2026). Tradeoff: weaker than ZAP on auth/API/JS-heavy apps; useful as a secondary scanner or a no-Docker fallback. Shell out only (GPLv2).",
+      "license": "GPLv2",
+      "free_local_no_api": "yes",
+      "language": "Python",
+      "integration": "shell-out CLI (-f json -o). Tool category=scan, medium-high risk (active).",
+      "maturity": "Actively maintained 2025-2026 (since 2006)"
+    },
+    {
+      "name": "nikto",
+      "why": "Legacy server-misconfiguration scanner: outdated software, dangerous files, default files, server banners. Cheap, fast, GPL, offline. Tradeoff: noisy, dated, high false positives, and not a real injection fuzzer — include as an optional low-effort recon-class check, not a core engine. Perl, so shell out.",
+      "license": "GPLv2",
+      "free_local_no_api": "yes",
+      "language": "Perl",
+      "integration": "shell-out CLI (-Format json -output). Tool category=scan/recon, low-medium risk.",
+      "maturity": "Maintained but legacy-focused; low priority"
+    },
+    {
+      "name": "feroxbuster",
+      "why": "Alternative content-discovery tool (recursive, fast, Rust, MIT). Pick EITHER ffuf or feroxbuster as the primary discovery tool — feroxbuster's recursion ergonomics are nicer, but ffuf being Go fits strix's stack better. Recommend ffuf primary, feroxbuster optional. Shell out (Rust binary).",
+      "license": "MIT",
+      "free_local_no_api": "yes",
+      "language": "Rust",
+      "integration": "shell-out CLI (--json). Tool category=scan/discovery, medium-high risk (volume).",
+      "maturity": "Actively maintained 2025-2026 (v2.13.x, releases through Dec 2025)"
+    },
+    {
+      "name": "jaeles",
+      "why": "Signature-based web scanning framework (Go, MIT). DEPRIORITIZE: last release v0.17.1 was mid-2023 and the project appears unmaintained. Its niche (custom signatures) is now better served by nuclei templates, which strix already uses. Mention only for completeness / migrating any legacy signatures.",
+      "license": "MIT",
+      "free_local_no_api": "yes",
+      "language": "Go",
+      "integration": "shell-out CLI if used at all; prefer nuclei instead.",
+      "maturity": "Effectively unmaintained (last release 2023)"
+    }
+  ],
+  "pitfalls": [
+    "Intrusiveness is the #1 risk: active scanning, fuzzing, and especially sqlmap --os-shell / data dump can modify state, lock accounts, exhaust resources, or break prod. Each tool needs per-MODE risk classification, not one risk per tool (e.g. nuclei passive vs intrusive templates; ZAP passive vs active scan; sqlmap detect vs exploit). Default destructive modes to high-risk and default-deny.",
+    "License entanglement: sqlmap (GPLv2), Arjun (AGPL-3.0), wapiti/nikto (GPLv2) must be SHELLED OUT as separate processes, never embedded/linked into strix's binary, or you inherit copyleft (AGPL is the worst — would force strix source disclosure even as a network service). Only embed the MIT/Apache Go tools (nuclei, katana, ffuf source, zap-api-go).",
+    "dalfox v3 (2026) is Rust now — code written against the old Go dalfox library will not work; only the binary CLI is current. The Go v2 branch is security-backport-only.",
+    "jaeles is stale (2023). Do not build core capability on it; nuclei supersedes it.",
+    "Air-gap reality: nuclei-templates and katana headless (Chromium) and SecLists wordlists all assume network access. For offline/air-gapped engagements strix must vendor/snapshot templates and wordlists and ship/disable the headless browser.",
+    "ZAP is not a single static binary (JVM) — running it embedded breaks strix's single-binary goal. Run it as a managed sidecar daemon/Docker container and talk to it over the local API; lifecycle-manage it from Go.",
+    "API-key creep: nuclei's AI template generation and ProjectDiscovery Cloud, and dalfox remote wordlists, are optional online features. Keep them OFF to honor the no-API-key / offline constraints; core scanning works without them.",
+    "Rate/volume control: ffuf/feroxbuster/nuclei can flood a target. The Scope Guard should enforce per-host concurrency and rate limits (and respect ROE time windows) by injecting -rate/-p/-c flags, not rely on tool defaults.",
+    "Result normalization: every tool emits a different JSON shape. Build per-tool adapters that map into internal/state/finding.go with a consistent severity->RiskLevel and WSTG/OWASP-Top-10 tag, or findings will be unaggregatable across tools.",
+    "Authentication is where scanners silently under-test: nuclei/ffuf/katana have limited auth/session handling vs ZAP. For authenticated API/app testing, route through ZAP's auth/session management or pass tokens/cookies explicitly, else coverage is shallow."
+  ],
+  "open_questions": [
+    "Embed vs sidecar policy: which Go tools (nuclei, katana, ffuf) does strix import in-process for the single-binary goal, vs which run as managed subprocesses/daemons (ZAP, all Python/Rust/Perl tools)? This sets the architecture for the whole web layer.",
+    "How granular should risk-gating be — per tool, or per tool+mode/template-tag? Recommend per-mode, but it requires the action model to carry a mode/intrusiveness field the guard can read.",
+    "Air-gap strategy for nuclei-templates / SecLists / wordlists: ship a vendored snapshot in the strix release, or document an operator-side sync step? Affects offline guarantee.",
+    "Does strix accept a Docker/JVM dependency for ZAP, or must the web layer be pure-binary? If no Docker, ZAP must be a documented external dependency the operator installs — or drop ZAP for wapiti as the active-scan engine.",
+    "Content-discovery primary: standardize on ffuf (Go, fits stack) or feroxbuster (nicer recursion, Rust)? Pick one to avoid redundant tools.",
+    "AGPL handling for Arjun: keep it (separate process only) or replace its capability with ZAP/nuclei param discovery + a custom Go param-miner to avoid AGPL in the distribution entirely?",
+    "How should the local LLM planner be constrained to choose intrusive tools — e.g., should the planner be forbidden from even proposing exploit-class actions unless ROE explicitly enables an 'exploit' category, with the guard as backstop?",
+    "Wordlist/template provenance and reproducibility: how to pin versions so an audited engagement is repeatable (the audit log should record tool+template+wordlist versions)."
+  ],
+  "sources": [
+    {
+      "title": "OWASP ZAP — Docker User Guide (headless daemon, autorun)",
+      "url": "https://www.zaproxy.org/docs/docker/about/"
+    },
+    {
+      "title": "OWASP ZAP — Automation Framework (YAML plans, OpenAPI job)",
+      "url": "https://www.zaproxy.org/docs/desktop/addons/automation-framework/"
+    },
+    {
+      "title": "OWASP ZAP — API feature docs",
+      "url": "https://www.zaproxy.org/docs/desktop/start/features/api/"
+    },
+    {
+      "title": "zaproxy/zap-api-go — Go API client (Apache-2.0)",
+      "url": "https://github.com/zaproxy/zap-api-go"
+    },
+    {
+      "title": "zaproxy/zaproxy core (license/legal notice)",
+      "url": "https://github.com/zaproxy/zaproxy/blob/main/LEGALNOTICE.md"
+    },
+    {
+      "title": "projectdiscovery/nuclei (MIT, scanner)",
+      "url": "https://github.com/projectdiscovery/nuclei"
+    },
+    {
+      "title": "nuclei v3 Go SDK/library",
+      "url": "https://pkg.go.dev/github.com/projectdiscovery/nuclei/v3/lib"
+    },
+    {
+      "title": "projectdiscovery/katana (crawler, library usage)",
+      "url": "https://github.com/projectdiscovery/katana"
+    },
+    {
+      "title": "Running Nuclei (CLI, offline, optional AI/key features)",
+      "url": "https://docs.projectdiscovery.io/opensource/nuclei/running"
+    },
+    {
+      "title": "sqlmap official site (SQLi/DB takeover, GPLv2)",
+      "url": "https://sqlmap.org/"
+    },
+    {
+      "title": "sqlmap coverage — Help Net Security (2025)",
+      "url": "https://www.helpnetsecurity.com/2025/11/10/sqlmap-open-source-sql-injection-database-takeover-tool/"
+    },
+    {
+      "title": "hahwul/dalfox (v3 Rust rewrite, MIT)",
+      "url": "https://github.com/hahwul/dalfox"
+    },
+    {
+      "title": "s0md3v/Arjun (parameter discovery, AGPL-3.0)",
+      "url": "https://github.com/s0md3v/Arjun"
+    },
+    {
+      "title": "jaeles-project/jaeles (MIT, last release 2023)",
+      "url": "https://github.com/jaeles-project/jaeles"
+    },
+    {
+      "title": "wapiti-scanner/wapiti (GPLv2, Python DAST)",
+      "url": "https://github.com/wapiti-scanner/wapiti"
+    },
+    {
+      "title": "Wapiti official site (3.3.0, 2026)",
+      "url": "https://wapiti-scanner.github.io/"
+    },
+    {
+      "title": "epi052/feroxbuster (MIT, Rust content discovery)",
+      "url": "https://github.com/epi052/feroxbuster"
+    },
+    {
+      "title": "ffuf — Kali/libhunt overview (Go, MIT)",
+      "url": "https://www.libhunt.com/r/ffuf"
+    },
+    {
+      "title": "Nikto — Wapiti review context (legacy server scanner)",
+      "url": "https://appsecsanta.com/wapiti"
+    }
+  ]
+}

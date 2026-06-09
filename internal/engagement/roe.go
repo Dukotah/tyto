@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/dukotah/strix/internal/action"
+	"github.com/dukotah/tyto/internal/action"
 )
 
 // TimeWindow is an allowed operating window in UTC "HH:MM" form.

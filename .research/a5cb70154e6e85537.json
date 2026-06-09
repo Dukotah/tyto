@@ -1,0 +1,163 @@
+{
+  "facet": "memory-rag",
+  "summary": "strix already has the right primitive: an in-memory state.State (assets + findings) rendered to a text Summary() for the planner. The missing pieces are (1) durability across an engagement and across sessions, and (2) semantic recall so the planner can pull \"what's relevant now\" instead of dumping all state into every prompt. The correct local/free/no-key/Go-friendly architecture is a single embedded SQLite database that does triple duty: relational store for the asset/finding graph (typed tables + edges table = a perfectly adequate property graph at pentest scale), the audit/event log, and vector search via the sqlite-vec extension. Crucially, you can keep strix a single static binary by using ncruces/go-sqlite3 (WASM SQLite via wazero, no CGO) plus asg017/sqlite-vec-go-bindings/ncruces — no cgo, trivial cross-compile to Windows/macOS/Linux. Generate embeddings by reusing the Ollama server strix already talks to (POST /api/embed with nomic-embed-text), so no new runtime, no API key, fully offline. Avoid Qdrant/Chroma/Milvus-lite as the primary store: their embedded modes are Python-only, so from Go they require running a separate server, which breaks the single-binary vision and adds operational weight. Reserve a real graph DB (Neo4j+Graphiti, the PentAGI approach) only if/when cross-engagement attack-path reasoning outgrows SQLite — not at the current stage.",
+  "recommendations": [
+    {
+      "name": "SQLite as the unified engagement store (schema: assets, findings, edges, events, embeddings)",
+      "why": "One embedded file gives you relational queries, an explicit asset/finding/edge graph (a relationships table with from_id/to_id/rel_type is a property graph that handles pentest-scale graphs fine), the audit log, and a home for vectors — all transactional, all offline, zero servers. It cleanly extends the existing state.State: keep the in-memory cache for the hot path, persist to SQLite for durability and resume. This is the lowest-risk, most incrementally-buildable foundation and matches how a polished competitor would ship (single self-contained DB per engagement, e.g. engagement.strix).",
+      "license": "SQLite public domain; bindings BSD/MIT",
+      "free_local_no_api": "yes",
+      "integration": "go-lib — embed via ncruces/go-sqlite3 (no CGO); model each engagement as one .db file",
+      "language": "C (SQLite) accessed from Go",
+      "maturity": "SQLite is the most-deployed DB on earth; ncruces driver is mature, actively maintained, passes SQLite's own test suite"
+    },
+    {
+      "name": "ncruces/go-sqlite3 (cgo-free WASM SQLite driver via wazero)",
+      "why": "This is the linchpin for the 'single static binary' constraint. mattn/go-sqlite3 needs CGO, which wrecks easy cross-compilation; modernc.org/sqlite is pure-Go but does not get you the sqlite-vec extension. ncruces runs a WASM build of SQLite under the wazero runtime with no CGO, AND it has official sqlite-vec bindings. Tradeoff: WASM is somewhat slower than native CGO SQLite, but at pentest data volumes (thousands of assets/findings, not millions) that is irrelevant.",
+      "license": "MIT/BSD-style",
+      "free_local_no_api": "yes",
+      "integration": "go-lib — import github.com/ncruces/go-sqlite3 as the database/sql driver",
+      "language": "Go (+ embedded WASM)",
+      "maturity": "Actively maintained 2025, wazero-based, widely used as the go-to no-CGO SQLite with extension support"
+    },
+    {
+      "name": "sqlite-vec via asg017/sqlite-vec-go-bindings/ncruces",
+      "why": "Adds KNN vector search inside the same SQLite DB so the planner can do semantic recall (e.g. 'find prior findings/notes similar to this new service') without a separate vector service. Pairs natively with the ncruces driver for a no-CGO build; store vectors as BLOBs via SerializeFloat32 in a vec0 virtual table. Tradeoff: sqlite-vec is brute-force KNN (no ANN index yet), so it is linear in row count — perfectly fine up to tens of thousands of vectors, which covers a single engagement comfortably. Use the ncruces binding (not the cgo one) to preserve the static binary.",
+      "license": "Apache-2.0 / MIT",
+      "free_local_no_api": "yes",
+      "integration": "go-lib — import github.com/asg017/sqlite-vec-go-bindings/ncruces alongside the ncruces driver",
+      "language": "C compiled to WASM, called from Go",
+      "maturity": "Successor to sqlite-vss by Alex Garcia; the de-facto embedded vector option in 2025, broad adoption"
+    },
+    {
+      "name": "nomic-embed-text on the existing Ollama server (local embeddings)",
+      "why": "strix already POSTs to http://localhost:11434 for planning; reuse the same daemon's POST /api/embed to turn assets/findings/notes into 768-dim vectors. No new dependency, no API key, fully offline, returns L2-normalized vectors ready for cosine/L2 in sqlite-vec. nomic-embed-text is the sensible 2025 default for local English RAG (8K context, strong retrieval, small). Add a one-line embed.go client mirroring the existing ollama.go.",
+      "license": "Apache-2.0 (model)",
+      "free_local_no_api": "yes",
+      "integration": "HTTP — POST /api/embed to the local Ollama strix already uses",
+      "language": "served by Ollama (Go)",
+      "maturity": "Standard local embedding model, ubiquitous in Ollama RAG stacks"
+    },
+    {
+      "name": "embeddinggemma (300M) — alternative / lighter embedding model",
+      "why": "Google's 2025 on-device embedder: highest-ranked open multilingual model under 500M on MTEB, runs in ~200-300MB RAM quantized, also one ollama pull. Pick this when the operator's box is RAM-constrained or the engagement spans multilingual targets/docs. Same /api/embed integration path, so it is a config swap, not new code. Tradeoff: 512-token-ish chunks favor short asset/finding records over long documents.",
+      "license": "Gemma terms (free, allows local use)",
+      "free_local_no_api": "yes",
+      "integration": "HTTP — POST /api/embed to local Ollama (drop-in model swap)",
+      "language": "served by Ollama",
+      "maturity": "Released 2025, best-in-class small open embedder, first-class Ollama support"
+    },
+    {
+      "name": "chromem-go — alternative pure-Go vector store (no SQLite, no CGO)",
+      "why": "If you want vectors with zero C/WASM and a Chroma-like API, chromem-go is pure Go, single dependency-free import, has built-in Ollama embedding helpers (NewEmbeddingFuncOllama with nomic-embed-text), and optional on-disk persistence. Good fit if you decide to keep the relational store separate and only need a small semantic index. Tradeoff: in-memory and RAM-heavy (~1.3GB per 100k vectors) and it is NOT your relational/graph store — you would still need SQLite for assets/findings/audit, so it adds a second store rather than unifying. Recommended only as a fallback if sqlite-vec's WASM build ever causes friction.",
+      "license": "MPL-2.0",
+      "free_local_no_api": "yes",
+      "integration": "go-lib — github.com/philippgille/chromem-go, with its Ollama embedder",
+      "language": "Go (pure, no CGO)",
+      "maturity": "Actively maintained, popular single-binary RAG choice for Go in 2025-2026"
+    },
+    {
+      "name": "Neo4j + Graphiti — defer; only for cross-engagement attack-graph reasoning",
+      "why": "This is the PentAGI architecture (Go backend, MIT) for temporal knowledge graphs of vulns/exploits/attack paths. It is genuinely better for multi-hop attack-path queries and memory that accrues across many engagements. But it is a separate JVM server (Neo4j) plus a Graphiti service — heavy, not single-binary, and overkill for strix today. Treat it as a future 'pro' backend behind a Graph interface, not the v1 store. Keep the SQLite edges table now; swap in a graph DB later only if attack-path inference demands it.",
+      "license": "Neo4j GPLv3/commercial; Graphiti Apache-2.0",
+      "free_local_no_api": "partial",
+      "integration": "HTTP/RPC — Bolt/Cypher to a local Neo4j; runs locally/offline but is a separate server process",
+      "language": "Java (Neo4j) / Python (Graphiti)",
+      "maturity": "Mature; proven in PentAGI, but operationally heavy"
+    }
+  ],
+  "pitfalls": [
+    "Do not pick mattn/go-sqlite3 for sqlite-vec: it needs CGO and breaks the single-static-binary cross-compile story. Use the ncruces (WASM) driver + ncruces sqlite-vec binding instead.",
+    "modernc.org/sqlite is pure-Go but cannot load the sqlite-vec extension — choosing it forecloses in-DB vector search. If you want both pure-Go AND vectors, you must go the ncruces+sqlite-vec route (or use chromem-go as a separate vector store).",
+    "Qdrant/Chroma/Milvus-lite 'embedded mode' is a Python-only feature. From Go you must run them as a separate server (gRPC/HTTP), which violates the single-binary + zero-ops goal. Don't make them the primary store.",
+    "sqlite-vec is brute-force KNN (no ANN/HNSW index yet) — latency grows linearly (~1.7s p50 at 100k vectors in one benchmark). Fine per-engagement; if you ever build a cross-engagement corpus of hundreds of thousands of vectors, revisit (Bleve HNSW, LanceDB, or a server vector DB).",
+    "chromem-go is RAM-resident (~1.3GB/100k vectors) and is only a vector index — it is not your relational/graph/audit store, so using it means running two stores. Don't treat it as a full memory layer.",
+    "Embedding model dimensions and distance metric must match the vec0 table definition and stay stable; if you swap nomic-embed-text (768) for another model you must re-embed and migrate the vector table. Pin the model + dimension in the engagement DB metadata.",
+    "Ollama /api/embed returns L2-normalized vectors — use cosine/L2 consistently in sqlite-vec; mixing assumptions silently degrades recall.",
+    "Memory is sensitive engagement data (client targets, creds, findings). Keep the .db local, consider at-rest encryption (SQLCipher equivalent / OS disk encryption), and ensure the Scope Guard/audit still governs what gets stored and surfaced — memory must not become a side-channel that re-introduces out-of-scope data into prompts.",
+    "Don't dump the whole memory into every planner prompt as state grows — that is the current Summary() behavior and it won't scale. Move to retrieval: pull top-K relevant assets/findings by vector + recency/severity, plus a compact rollup.",
+    "Embedding generation needs the Ollama embedding model pulled; handle the 'model not present' error gracefully and degrade to keyword/SQL search so memory still works fully offline without the embedder."
+  ],
+  "open_questions": [
+    "Scope of memory: per-engagement only (one .db per job, simplest + cleanest data isolation) vs. a shared cross-engagement knowledge base (better learning, but raises client-data-segregation and confidentiality concerns for authorized pentests). Recommend per-engagement DB now, optional opt-in shared 'technique library' later.",
+    "Do you want a true property-graph query capability (multi-hop attack paths, e.g. Cypher) in v1, or is a relational edges table + recursive CTEs enough? The latter is far simpler and likely sufficient until attack-path inference becomes a headline feature.",
+    "Retrieval policy for the planner: how to weight semantic similarity vs. recency vs. severity vs. scope when selecting the top-K memory items injected into each plan cycle.",
+    "At-rest encryption: is OS-level disk encryption acceptable, or should strix encrypt the engagement DB itself (affects driver choice — ncruces supports an encryption VFS, but it adds complexity)?",
+    "Whether to standardize on one embedding model (nomic-embed-text) for reproducibility, or let the operator choose (embeddinggemma for low-RAM/multilingual) with required re-embed on change.",
+    "Should the audit log and the memory store share one DB file (simpler, atomic) or be separate files (cleaner tamper-evidence guarantees for audit)?"
+  ],
+  "sources": [
+    {
+      "title": "Embedded Vector Databases for Go in 2026: chromem-go vs sqlite-vec vs Bleve vs LanceDB",
+      "url": "https://shaharia.com/blog/choosing-embeddable-vector-database-go-application/"
+    },
+    {
+      "title": "Using sqlite-vec in Go (CGO vs ncruces WASM) — Alex Garcia",
+      "url": "https://alexgarcia.xyz/sqlite-vec/go.html"
+    },
+    {
+      "title": "asg017/sqlite-vec (vector search SQLite extension)",
+      "url": "https://github.com/asg017/sqlite-vec"
+    },
+    {
+      "title": "asg017/sqlite-vec-go-bindings (cgo + ncruces WASM bindings)",
+      "url": "https://github.com/asg017/sqlite-vec-go-bindings"
+    },
+    {
+      "title": "ncruces/go-sqlite3 (cgo-free SQLite via wazero WASM)",
+      "url": "https://github.com/ncruces/go-sqlite3"
+    },
+    {
+      "title": "You don't need CGO to use SQLite in your Go binary",
+      "url": "https://til.andrew-quinn.me/posts/you-don-t-need-cgo-to-use-sqlite-in-your-go-binary/"
+    },
+    {
+      "title": "modernc.org/sqlite (pure-Go SQLite) — Go Packages",
+      "url": "https://pkg.go.dev/modernc.org/sqlite"
+    },
+    {
+      "title": "philippgille/chromem-go (embeddable pure-Go vector DB)",
+      "url": "https://github.com/philippgille/chromem-go"
+    },
+    {
+      "title": "chromem-go Ollama embedding function (nomic-embed-text)",
+      "url": "https://github.com/philippgille/chromem-go/blob/main/embed_ollama.go"
+    },
+    {
+      "title": "Ollama Embeddings docs (/api/embed)",
+      "url": "https://docs.ollama.com/capabilities/embeddings"
+    },
+    {
+      "title": "Ollama Embedding Models: Benchmarks, VRAM, Which to Use — Morph",
+      "url": "https://www.morphllm.com/ollama-embedding-models"
+    },
+    {
+      "title": "Introducing EmbeddingGemma — Google Developers Blog",
+      "url": "https://developers.googleblog.com/en/introducing-embeddinggemma/"
+    },
+    {
+      "title": "embeddinggemma on Ollama",
+      "url": "https://ollama.com/library/embeddinggemma"
+    },
+    {
+      "title": "vxcontrol/pentagi (autonomous pentest AI: pgvector + Graphiti/Neo4j memory)",
+      "url": "https://github.com/vxcontrol/pentagi"
+    },
+    {
+      "title": "go.etcd.io/bbolt (embedded key/value store) — Go Packages",
+      "url": "https://pkg.go.dev/go.etcd.io/bbolt"
+    },
+    {
+      "title": "DuckDB Vector Similarity Search (VSS / HNSW) extension",
+      "url": "https://duckdb.org/docs/current/core_extensions/vss"
+    },
+    {
+      "title": "Qdrant Local Mode (in-process, Python-only) — DeepWiki",
+      "url": "https://deepwiki.com/qdrant/qdrant-client/2.2-local-mode"
+    },
+    {
+      "title": "qdrant/go-client (Go client connects to a server) — Go Packages",
+      "url": "https://pkg.go.dev/github.com/qdrant/go-client/qdrant"
+    }
+  ]
+}

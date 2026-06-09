@@ -1,4 +1,4 @@
-// Command strix is the CLI entrypoint for the AI-orchestrated authorized
+// Command tyto is the CLI entrypoint for the AI-orchestrated authorized
 // penetration-testing platform.
 package main
 
@@ -9,17 +9,17 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/dukotah/strix/internal/audit"
-	"github.com/dukotah/strix/internal/engagement"
-	"github.com/dukotah/strix/internal/engine"
-	"github.com/dukotah/strix/internal/guard"
-	"github.com/dukotah/strix/internal/planner"
-	"github.com/dukotah/strix/internal/planner/llm"
-	"github.com/dukotah/strix/internal/report"
-	"github.com/dukotah/strix/internal/state"
-	"github.com/dukotah/strix/internal/tool"
-	"github.com/dukotah/strix/internal/tool/builtin/portscan"
-	"github.com/dukotah/strix/pkg/version"
+	"github.com/dukotah/tyto/internal/audit"
+	"github.com/dukotah/tyto/internal/engagement"
+	"github.com/dukotah/tyto/internal/engine"
+	"github.com/dukotah/tyto/internal/guard"
+	"github.com/dukotah/tyto/internal/planner"
+	"github.com/dukotah/tyto/internal/planner/llm"
+	"github.com/dukotah/tyto/internal/report"
+	"github.com/dukotah/tyto/internal/state"
+	"github.com/dukotah/tyto/internal/tool"
+	"github.com/dukotah/tyto/internal/tool/builtin/portscan"
+	"github.com/dukotah/tyto/pkg/version"
 )
 
 func main() {
@@ -29,7 +29,7 @@ func main() {
 	}
 	switch os.Args[1] {
 	case "version", "-v", "--version":
-		fmt.Printf("strix %s\n", version.Version)
+		fmt.Printf("tyto %s\n", version.Version)
 	case "tools":
 		cmdTools()
 	case "engagement":
@@ -46,10 +46,10 @@ func main() {
 }
 
 func usage() {
-	fmt.Print(`strix — AI-orchestrated authorized penetration testing
+	fmt.Print(`tyto — AI-orchestrated authorized penetration testing
 
 USAGE:
-  strix <command> [flags]
+  tyto <command> [flags]
 
 COMMANDS:
   run           Run an engagement (plan -> guard -> execute loop)
@@ -59,11 +59,11 @@ COMMANDS:
   help          Show this help
 
 EXAMPLES:
-  strix engagement validate configs/engagement.example.yaml
-  strix run --engagement configs/engagement.example.yaml --dry-run
-  strix tools
+  tyto engagement validate configs/engagement.example.yaml
+  tyto run --engagement configs/engagement.example.yaml --dry-run
+  tyto tools
 
-Run "strix <command> -h" for command flags.
+Run "tyto <command> -h" for command flags.
 `)
 }
 
@@ -84,13 +84,13 @@ func cmdTools() {
 
 func cmdEngagement(args []string) {
 	if len(args) < 1 {
-		fmt.Fprintln(os.Stderr, "usage: strix engagement validate <file>")
+		fmt.Fprintln(os.Stderr, "usage: tyto engagement validate <file>")
 		os.Exit(2)
 	}
 	switch args[0] {
 	case "validate":
 		if len(args) < 2 {
-			fmt.Fprintln(os.Stderr, "usage: strix engagement validate <file>")
+			fmt.Fprintln(os.Stderr, "usage: tyto engagement validate <file>")
 			os.Exit(2)
 		}
 		eng, err := engagement.Load(args[1])
@@ -170,7 +170,7 @@ func cmdRun(args []string) {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	fmt.Printf("strix %s — engagement %s (%s)\n", version.Version, eng.ID, eng.Client)
+	fmt.Printf("tyto %s — engagement %s (%s)\n", version.Version, eng.ID, eng.Client)
 	fmt.Printf("planner=%s  dry-run=%v  audit=%s\n", client.Name(), *dryRun, ap)
 
 	if err := eg.Run(ctx); err != nil {

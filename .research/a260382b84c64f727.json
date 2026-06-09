@@ -1,0 +1,140 @@
+{
+  "facet": "tool-calling-go",
+  "summary": "For strix, the most robust path to validated actions from a local model in Go is to NOT rely on the model \"behaving\" — instead use grammar-constrained decoding so output is guaranteed structurally valid, then validate semantically in Go, then gate through the deterministic Scope Guard. The recommended stack is: the official Ollama Go client (github.com/ollama/ollama/api) as the LLM transport, using its ChatRequest.Format (json.RawMessage holding a JSON Schema) to force structured output — Ollama compiles that schema to a GBNF grammar in llama.cpp and masks invalid tokens at sample time, so malformed JSON is impossible at the token level. Native Ollama tool-calling (ChatRequest.Tools + resp.Message.ToolCalls) is mature as of 2025 (new structure-aware streaming parser, May 2025) and gives you OpenAI-style tool calls, but arguments are NOT schema-validated, only parsed — so a validate-and-repair layer is mandatory. Layer santhosh-tekuri/jsonschema/v6 (validation, draft 2020-12) over the decoded args, with invopop/jsonschema or Google's new google/jsonschema-go (Jan 2026) to generate the schemas from Go structs. Wrap it all in a small validate->repair->retry loop (1-2 retries, temp 0, re-prompt with the validation error) before handing the action to the Scope Guard. Avoid langchaingo as the core abstraction — it works but adds a heavy dependency, lags the raw client, and you give up fine control you need for an auditable security tool. For maximum determinism (or non-Ollama deployments) you can shell to llama.cpp's server and use its json_schema/grammar fields directly. Model-wise, Qwen3 (14B/32B), Llama 3.1/3.3, and Devstral are the well-supported tool-callers; force-constrain output regardless of model.",
+  "recommendations": [
+    {
+      "name": "Ollama Go client + Format=JSON Schema (github.com/ollama/ollama/api)",
+      "why": "This is the spine of the recommended approach. The official Go client is a first-party, single-import package that maps 1:1 to the local Ollama HTTP API. Set ChatRequest.Format (typed json.RawMessage) to a JSON Schema and Ollama compiles it to a GBNF grammar inside llama.cpp; invalid tokens are masked during sampling, so resp.Message.Content is GUARANTEED to be structurally-valid JSON matching the schema — you json.Unmarshal it directly. This eliminates the entire class of 'model emitted broken JSON' failures, which is exactly what an auditable pen-test tool needs. Tradeoff: schema-constraint guarantees structure/types, not semantic correctness (e.g. an in-scope IP), so you still validate in Go and gate through Scope Guard. Keep schemas shallow — deeply nested/recursive schemas degrade quality and speed.",
+      "license": "MIT",
+      "free_local_no_api": "yes",
+      "integration": "go-lib (import github.com/ollama/ollama/api; client = api.ClientFromEnvironment(); client.Chat(ctx, &api.ChatRequest{Model, Messages, Format: schemaJSON}, handler)). Requires a local ollama daemon (also MIT, runs offline, no key).",
+      "language": "Go (client); Ollama server is Go wrapping llama.cpp (C++)",
+      "maturity": "Mature and first-party; tracks the server release-for-release. ChatRequest exposes Format, Tools, Options, Think, Logprobs as of 2025-2026."
+    },
+    {
+      "name": "Native Ollama tool calling (ChatRequest.Tools / resp.Message.ToolCalls)",
+      "why": "Use this when you want the model to CHOOSE among strix's registered tools (portscan, etc.) rather than just fill one fixed schema. Define api.Tool{Type:\"function\", Function: api.ToolFunction{Name, Description, Parameters}} per registered plugin; the model returns resp.Message.ToolCalls[].Function.{Name, Arguments}. As of the May 2025 streaming-tool release, Ollama's parser is structure-aware (reads each model's template, streams tool calls, dedupes) — much more reliable than the old JSON-sniffing parser. Tradeoff vs. Format: tool-call Arguments are parsed but NOT grammar-constrained or schema-validated, so the validate-and-repair layer is REQUIRED here. Works on Qwen3, Llama 3.1/3.3/4, Devstral, Qwen2.5; needs >=32k context for good multi-tool behavior. Recommended hybrid for strix: use Tools for tool SELECTION, then a Format-constrained second call (or per-tool grammar) to fill that tool's arguments.",
+      "license": "MIT",
+      "free_local_no_api": "yes",
+      "integration": "go-lib (same api package). Map your tool registry -> api.Tools; dispatch on ToolCalls[].Function.Name; feed results back as api.Message{Role:\"tool\"}.",
+      "language": "Go",
+      "maturity": "Mature for mainstream tool-trained models; accuracy still varies by model size — larger models needed for multi-tool/multi-step. Arguments unvalidated by design."
+    },
+    {
+      "name": "santhosh-tekuri/jsonschema/v6 (validation) + invopop/jsonschema or google/jsonschema-go (schema generation)",
+      "why": "The validate half of validate-and-repair. santhosh-tekuri/jsonschema/v6 is the de-facto Go JSON Schema validator (drafts 4 through 2020-12), pure-Go, no cgo, gives precise per-field errors you can feed back into a repair prompt. It does NOT generate schemas, so pair it with a generator: invopop/jsonschema (mature, draft 2020-12, reflects Go structs via tags) or Google's new google/jsonschema-go/jsonschema (released Jan 2026, official, reflects structs and represents the spec as a plain Go struct — also what the Go MCP SDK uses). Generate schema from your action/arg structs once, send it as Ollama's Format AND validate decoded output against it — single source of truth. This is what turns untrusted model text into typed actions safe to pass to Scope Guard.",
+      "license": "santhosh-tekuri: Apache-2.0; invopop: MIT; google/jsonschema-go: BSD-3-Clause",
+      "free_local_no_api": "yes",
+      "integration": "go-lib (all three). Reflect struct -> schema (invopop/google) -> marshal as Format -> on response Unmarshal -> Validate (santhosh-tekuri) -> on error, repair-retry.",
+      "language": "Go",
+      "maturity": "santhosh-tekuri and invopop are widely used and stable; google/jsonschema-go is new (2026) but official and tied to the Go MCP SDK — safe to adopt, lighter spec coverage than santhosh for validation so keep santhosh for the validator role."
+    },
+    {
+      "name": "Validate->repair->retry loop (hand-rolled in Go, ~50 lines)",
+      "why": "The reliability glue, and small enough to own rather than pull a framework. Pattern: (1) request with Format=schema and temperature 0 (or low), (2) json.Unmarshal, (3) jsonschema.Validate, (4) on parse/validate failure, append the exact error text as a user/tool message ('your output failed: <err>, return corrected JSON only') and retry, capped at 1-2 attempts, (5) on repeated failure, FAIL CLOSED — emit an audited error, never execute an unvalidated action. Because you also use Format-constrained decoding, step 2/3 should rarely trip, so retries stay near zero. Owning this loop (vs. instructor/langchaingo) keeps strix a single static binary, keeps every attempt in the audit log, and lets the Scope Guard remain the final non-AI gate. Monitor format-failure-rate (<1%) and avg-retry (<1.5) as health metrics.",
+      "license": "N/A (your code)",
+      "free_local_no_api": "yes",
+      "integration": "Native Go in strix's plan->guard->execute engine, sitting between planner output and Scope Guard.",
+      "language": "Go",
+      "maturity": "Pattern is industry-standard (Instructor/LangChain replicate it); trivial and robust to implement incrementally."
+    },
+    {
+      "name": "llama.cpp server json_schema/grammar (fallback / max-determinism path)",
+      "why": "Alternative to Ollama for operators who want to drive the inference engine directly or run fully air-gapped without the Ollama daemon. llama.cpp's server (and llama-cli) accept a json_schema field OR a raw GBNF grammar on /completion and /v1/chat/completions; it converts schema->GBNF (json_schema_to_grammar) and masks tokens, same guarantee as Ollama (Ollama is a wrapper over this). Lets you author a hand-tuned GBNF grammar when a JSON Schema can't express a constraint (e.g. a tight enum/regex for a tool name). Tradeoff: you manage the server binary/model files and HTTP plumbing yourself; less convenient than Ollama for the default UX. Keep Ollama as default, document this as the power-user/air-gapped backend behind the same Go interface.",
+      "license": "MIT",
+      "free_local_no_api": "yes",
+      "integration": "shell-out CLI (spawn llama-server) + HTTP from Go (POST json_schema or grammar to /v1/chat/completions). No Go bindings needed; treat as an interchangeable backend behind strix's LLM interface.",
+      "language": "C++ (server); strix talks to it over HTTP from Go",
+      "maturity": "Very mature, actively maintained (ggml-org); grammar-constrained decoding is a core, battle-tested feature."
+    }
+  ],
+  "pitfalls": [
+    "Grammar/Format constraints guarantee STRUCTURE and TYPES, not SEMANTICS. The model can emit perfectly-valid JSON with an out-of-scope target, wrong CIDR, or destructive flag. Constrained decoding does NOT replace the Scope Guard — it sits before it. Always treat decoded actions as untrusted until both jsonschema-validated AND Scope-Guard-approved.",
+    "Native Ollama tool-call Arguments are parsed, not validated. Unlike the Format path, tools mode does not grammar-constrain argument generation, so you can get missing required fields or wrong types. You MUST validate ToolCalls arguments against the tool's schema before dispatch.",
+    "Deeply nested or recursive JSON Schemas hurt both reliability and latency under constrained decoding, and some schemas don't fully round-trip through json_schema->GBNF. Keep action schemas flat; split complex plans into multiple constrained calls.",
+    "Format and Tools interact awkwardly on some models/versions — forcing a Format while also offering Tools can suppress tool calls or vice-versa. Prefer a two-step design: one call to SELECT a tool (Tools), a second Format-constrained call to FILL that tool's args.",
+    "Model choice still matters: small/un-tool-trained models pick wrong tools or loop even with valid JSON. Smaller GPT-OSS variants specifically had broken structured-output enforcement with Ollama in late 2025 (Harmony format). Prefer Qwen3 14B/32B, Llama 3.1/3.3, or Devstral, and pin/version-test the model.",
+    "langchaingo as the core abstraction is a trap for this project: it lags the raw client, hides the request internals you need for auditing/control, and bloats the binary. Its WithTools/Ollama support works for prototyping but cedes determinism you want in a security tool. Use the raw api client.",
+    "Set temperature 0 (or very low) and a generous context (>=32k) for tool/structured calls; defaults cause avoidable format drift and dropped tool calls.",
+    "Fail closed, not open: if validate-and-repair exhausts retries, log an audited failure and abort the action — never execute a partially-parsed or 'best effort' action in a pen-test context.",
+    "Streaming + tool calls: if you stream (Ollama supports streaming tool calls since May 2025), accumulate and re-validate the full assembled tool call; don't act on partial fragments."
+  ],
+  "open_questions": [
+    "Single fixed-schema-per-call (Format) vs. model-chooses-tool (Tools) vs. the recommended two-step hybrid — which fits strix's planner loop best? This depends on how the existing planner already frames plan steps.",
+    "Which exact local model(s) will strix pin as the default brain? That determines real-world tool-call accuracy and whether you can rely on native Tools mode or must fall back to Format-constrained single-tool calls.",
+    "Do you want to commit to Ollama as the only backend, or define a backend interface now (Ollama default, llama.cpp server as air-gapped/power-user) — the latter is cheap to design upfront but adds an abstraction.",
+    "Schema source of truth: generate JSON Schemas from Go structs (invopop / google/jsonschema-go) vs. hand-author GBNF for the tightest constraints on critical fields (tool name enum, risk category). A hybrid (auto schema + hand GBNF for the few safety-critical fields) may be ideal.",
+    "How many repair retries before fail-closed, and should repair attempts themselves be first-class audit-log entries (recommended yes for a pen-test tool)?",
+    "google/jsonschema-go (Jan 2026) vs. santhosh-tekuri for validation long-term — adopt the newer official package fully, or keep santhosh-tekuri for its broader draft/keyword coverage?"
+  ],
+  "sources": [
+    {
+      "title": "Ollama Go api package (pkg.go.dev) — ChatRequest.Format, Tools, ToolCall types",
+      "url": "https://pkg.go.dev/github.com/ollama/ollama/api"
+    },
+    {
+      "title": "Structured Outputs — Ollama docs",
+      "url": "https://docs.ollama.com/capabilities/structured-outputs"
+    },
+    {
+      "title": "Structured outputs — Ollama Blog",
+      "url": "https://ollama.com/blog/structured-outputs"
+    },
+    {
+      "title": "Streaming responses with tool calling — Ollama Blog (May 2025, new parser)",
+      "url": "https://ollama.com/blog/streaming-tool"
+    },
+    {
+      "title": "How to Implement LLM Tool-calling with Go and Ollama — DEV / Calvin McLean",
+      "url": "https://dev.to/calvinmclean/how-to-implement-llm-tool-calling-with-go-and-ollama-237g"
+    },
+    {
+      "title": "Constraining LLMs with Structured Output: Ollama, Qwen3 & Python or Go — Rost Glukhov",
+      "url": "https://medium.com/@rosgluk/constraining-llms-with-structured-output-ollama-qwen3-python-or-go-2f56ff41d720"
+    },
+    {
+      "title": "llama.cpp grammars README (GBNF, json_schema, json_schema_to_grammar)",
+      "url": "https://github.com/ggml-org/llama.cpp/blob/master/grammars/README.md"
+    },
+    {
+      "title": "Grammar and Structured Output — llama.cpp (DeepWiki)",
+      "url": "https://deepwiki.com/ggml-org/llama.cpp/8.1-grammar-and-structured-output"
+    },
+    {
+      "title": "How Does Ollama's Structured Outputs Work? — Daniel Clayton (GBNF token masking)",
+      "url": "https://blog.danielclayton.co.uk/posts/ollama-structured-outputs/"
+    },
+    {
+      "title": "santhosh-tekuri/jsonschema — Go JSON Schema validation (draft 2020-12)",
+      "url": "https://github.com/santhosh-tekuri/jsonschema"
+    },
+    {
+      "title": "invopop/jsonschema — Generate JSON Schemas from Go types",
+      "url": "https://github.com/invopop/jsonschema"
+    },
+    {
+      "title": "A JSON schema package for Go — Google Open Source Blog (google/jsonschema-go, Jan 2026)",
+      "url": "https://opensource.googleblog.com/2026/01/a-json-schema-package-for-go.html"
+    },
+    {
+      "title": "langchaingo llms package + Ollama functions example (WithTools)",
+      "url": "https://github.com/tmc/langchaingo/blob/main/examples/ollama-functions-example/ollama_functions_example.go"
+    },
+    {
+      "title": "Ollama GPT-OSS Structured Output Issues — Rost Glukhov (model caveats)",
+      "url": "https://www.glukhov.org/post/2025/10/ollama-gpt-oss-structured-output-issues/"
+    },
+    {
+      "title": "Building Production-Ready LLM Tool Calling: JSON Validation + Retry — Hariom Sahu",
+      "url": "https://medium.com/@hariomshahu101/building-production-ready-llm-applications-bulletproof-llm-tool-calling-with-advanced-json-b95ce8889f4e"
+    },
+    {
+      "title": "Best Local Models for Tool Calling in 2026: Benchmarks & Comparison — PromptQuorum",
+      "url": "https://www.promptquorum.com/power-local-llm/best-local-models-tool-calling-2026"
+    },
+    {
+      "title": "Berkeley Function Calling Leaderboard (BFCL) — OpenReview",
+      "url": "https://openreview.net/forum?id=2GmDdhBdDk"
+    }
+  ]
+}

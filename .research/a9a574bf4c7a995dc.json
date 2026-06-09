@@ -1,0 +1,169 @@
+{
+  "facet": "local-models",
+  "summary": "For strix's local \"brain,\" the strongest 2025-2026 picks are the Qwen3 family (Apache-2.0, best-in-class open tool-calling and native MCP support) and Mistral's Apache-2.0 models (Small 3.1/3.2 24B and the agent-tuned Devstral). On the Berkeley Function Calling Leaderboard, Llama 3.1 Instruct (405B/70B/8B) actually posts the highest raw FC AST scores among open models, but its custom license carries an Acceptable Use Policy that restricts \"espionage,\" weapons/critical-infrastructure work, and a 700M-MAU competitor clause — a real liability for an offensive-security product you intend to ship commercially. Apache-2.0 models (Qwen3, Mistral/Mixtral, DeepSeek-R1 distills derived from Qwen) give you clean commercial freedom with no API and full offline operation. The practical default is Qwen3-30B-A3B-Instruct-2507 (MoE, ~3B active, ~21GB at Q4 — fast and agentic on a 24GB GPU/32GB unified), with Qwen3-8B/14B for 16GB and Qwen3-4B-Instruct-2507 for 8GB tiers; all expose tool calls via `<tool_call>` JSON and switch thinking on/off. A key independent finding (TrustedSec self-hosted offensive-security benchmark) is that agent-tuned mid-size models (Devstral) beat larger ones on tool-use efficiency and latency, while ALL local models hit a wall on multi-step exploit chaining — so strix should lean on its deterministic Scope Guard + explicit planning scaffolds rather than expecting the model to reason an entire kill-chain unaided. Pure reasoning models (DeepSeek-R1 distills, QwQ) reason well but historically emit broken/empty tool_calls, so keep them as optional \"planner/advisor\" backends, not the tool-executing loop.",
+  "recommendations": [
+    {
+      "name": "Qwen3-30B-A3B-Instruct-2507 (DEFAULT for 24GB GPU / 32GB+ unified)",
+      "why": "Best overall fit: MoE with only ~3B active params, so it runs fast (~tps of a small model) while reasoning like a much larger one. Leading open tool-calling, native MCP support, reliable <tool_call> JSON, 256K context (262,144 native) for long ROE/scope docs and audit history. 2507 update specifically improved tool usage and agentic behavior. Tradeoffs: MoE needs the whole model resident (~21GB Q4_K_M); for tight VRAM, offload experts to RAM (works at ~30 tps even on small GPUs with enough system RAM).",
+      "license": "Apache-2.0",
+      "free_local_no_api": "yes",
+      "integration": "HTTP/RPC — keep the existing Ollama backend (`ollama run qwen3:30b-a3b-instruct-2507` or unsloth GGUF via llama.cpp server); strix already calls Ollama. Parse the <tool_call> JSON into the plugin registry.",
+      "language": "model (GGUF); served by Ollama/llama.cpp (C/C++)",
+      "maturity": "Very active; Alibaba flagship open series, huge community, first-class llama.cpp/Ollama/Unsloth support"
+    },
+    {
+      "name": "Qwen3-8B / Qwen3-14B (16GB tier)",
+      "why": "Sweet spot for a 16GB GPU (e.g., 4060 Ti 16GB / 4070 Ti Super) or 16GB Mac. Same Apache-2.0 license, same <tool_call> format, thinking-mode toggle, 128K context. 14B at Q4_K_M ~9GB leaves room for context; 8B ~5GB is comfortable with long context. Strong enough for plan->guard->execute loops; step down to 8B if you need bigger context windows or vision side-tools.",
+      "license": "Apache-2.0",
+      "free_local_no_api": "yes",
+      "integration": "HTTP/RPC via Ollama/llama.cpp (`ollama run qwen3:8b` / `qwen3:14b`)",
+      "language": "GGUF model",
+      "maturity": "Very active, widely deployed"
+    },
+    {
+      "name": "Qwen3-4B-Instruct-2507 (8GB tier / laptop / air-gapped minimal)",
+      "why": "Smallest model that is genuinely usable for agentic tool calling — documented driving real agents via llama.cpp at Q8. ~3-5GB at Q4-Q8, fits an 8GB GPU or even CPU/iGPU with 16GB RAM. Ideal for the user's stripped terminal-only Lenovo dev machine. Expect more supervision and tighter prompting; pair with strix's Scope Guard and structured plan schema to compensate for weaker long-horizon reasoning.",
+      "license": "Apache-2.0",
+      "free_local_no_api": "yes",
+      "integration": "HTTP/RPC via Ollama/llama.cpp; also embeddable through llama.cpp server on CPU",
+      "language": "GGUF model",
+      "maturity": "Active, final open 4B release (Aug 2025)"
+    },
+    {
+      "name": "Mistral-Small-3.2-24B-Instruct-2506 (alt default, 24GB tier)",
+      "why": "Apache-2.0, native function calling + JSON output, 128K context, knowledge-dense, runs on a single 24GB GPU or 32GB Mac at Q4 (~14-15GB). Strong instruction-following and a different model lineage than Qwen — valuable as a cross-check/fallback so strix isn't single-vendor. 3.2 fixed repetition/instruction issues over 3.1. Slightly behind Qwen3 on the very latest agent benchmarks but very stable.",
+      "license": "Apache-2.0",
+      "free_local_no_api": "yes",
+      "integration": "HTTP/RPC via Ollama/llama.cpp; supports Mistral's tool-call schema",
+      "language": "GGUF model",
+      "maturity": "Active; Mistral's mainline small model, well supported"
+    },
+    {
+      "name": "Devstral Small (Mistral, agent/tool-use specialist)",
+      "why": "Independent offensive-security benchmark (TrustedSec) found the Devstral family had the best tool-use EFFICIENCY: fewest turns per task (~1.7), lowest latency (~23s), 77% first-attempt solves — beating much larger models. Built for agent loops (SWE-style), so it's a natural fit for strix's execute engine where turn count and latency matter. Apache-2.0. Tradeoff: tuned for software-agent tasks; validate on your pentest tool schemas.",
+      "license": "Apache-2.0",
+      "free_local_no_api": "yes",
+      "integration": "HTTP/RPC via Ollama/llama.cpp",
+      "language": "GGUF model",
+      "maturity": "Active Mistral release line for coding/agents"
+    },
+    {
+      "name": "DeepSeek-R1-Distill-Qwen-14B / 32B (optional PLANNER/advisor, not executor)",
+      "why": "Excellent step-by-step reasoning for engagement planning and analyzing findings; Qwen2.5-based distills are Apache-2.0. Use as a separate 'reasoning' backend that drafts the plan, which strix then converts to tool calls executed by Qwen3/Devstral. Hard tradeoff: distilled R1 variants are documented to emit empty/broken tool_calls — do NOT put them in the direct tool-calling loop. 14B ~9GB Q4, 32B ~20GB Q4.",
+      "license": "Apache-2.0 (Qwen2.5-derived distills)",
+      "free_local_no_api": "yes",
+      "integration": "HTTP/RPC via Ollama; strix uses it as a planning oracle, parses prose/JSON plan, then dispatches tools with a different model",
+      "language": "GGUF model",
+      "maturity": "Popular (Jan 2025); note original R1-distill lacked FC, later R1-0528 added it"
+    },
+    {
+      "name": "Hermes 3 (Llama 3.1 8B/70B, Nous) — situational fallback",
+      "why": "Neutrally-aligned, steerable, with explicit structured-output and function-calling training and a built-in JSON-schema system prompt; far less 'twitchy' than base Llama-instruct when discussing exploit/memory-corruption topics — useful for the security-reasoning, no-refusal requirement. Tradeoff: inherits the Llama 3 community license + Acceptable Use Policy (700M-MAU cap, restricted-use carve-outs), so it is NOT a clean commercial base for a shipped offensive-security product. Keep as an operator-local option, not the bundled default.",
+      "license": "Llama 3 Community License (custom, not OSI-open)",
+      "free_local_no_api": "yes",
+      "integration": "HTTP/RPC via Ollama/llama.cpp; uses Hermes <tool_call> XML/JSON convention",
+      "language": "GGUF model",
+      "maturity": "Active (Nous Research), strong community"
+    }
+  ],
+  "pitfalls": [
+    "LICENSE TRAP for an offensive-security product: Llama 3.x/4 are NOT Apache/OSI-open. Their custom license adds a 700M-MAU commercial cap, a competitor-product restriction, a ban on using outputs to train non-Llama models, and an Acceptable Use Policy that prohibits 'espionage,' weapons, and critical-infrastructure activities — directly adjacent to pentest use. Default to Apache-2.0 models (Qwen3, Mistral/Mixtral/Devstral, Qwen2.5-derived DeepSeek distills) for anything you ship.",
+    "ACCEPTABLE-USE / SAFETY-ALIGNMENT TRAP: Even Apache-2.0 models ship with usage policies and safety tuning. Gemma's terms incorporate Google's Prohibited Use Policy (attacks on critical infrastructure, etc.); Qwen/Gemma instruct models can refuse or hedge on offensive payloads. The Apache license governs the WEIGHTS (you're free), but the model's TRAINED REFUSALS still bite at runtime — budget for prompt engineering, role/scope framing, or operator-supplied uncensored variants (Dolphin/Hermes/abliterated) for legitimate authorized testing.",
+    "BFCL scores mislead for local use: Llama 3.1 405B/70B top the open BFCL AST rankings, but those sizes are not consumer-hardware-runnable, and high AST score != good multi-turn agentic behavior. Use BFCL multi-turn/agentic tracks and real task benchmarks, not single-call AST, to pick a model for strix's loop.",
+    "Reasoning models break tool calling: DeepSeek-R1 distills and QwQ reason well but are documented to return empty/malformed tool_calls; original R1 lacked function calling entirely. Don't wire a pure-reasoning model into the execute loop — use it only as a planner and have a tool-capable model dispatch.",
+    "Multi-step exploitation is a hard ceiling for ALL local models: the TrustedSec self-hosted benchmark found models know payload classes but fail to chain them (e.g., 0% on extraction-based SQLi). strix must NOT rely on the model to autonomously reason an end-to-end kill chain; provide explicit planning scaffolds, tool affordances, and let the deterministic Scope Guard + structured plan schema constrain and guide it.",
+    "MoE memory math: Qwen3-30B-A3B is fast (3B active) but still needs the FULL ~21GB (Q4) resident or expert-offloaded to RAM. Don't size VRAM by active params. For 8/16GB tiers, plan expert offload (needs 32-64GB system RAM) or drop to dense 4B/8B/14B.",
+    "Web-search noise / model hallucination: several 2026 'sources' reference unverifiable future models (Qwen3.5/3.6, Mistral Small 4, Gemma 4, Devstral-2, Claude-Opus-4-x). Pin strix's defaults to verifiable, downloadable 2025 releases (Qwen3-2507, Mistral-Small-3.2-2506, R1 distills) and re-validate model IDs against Hugging Face/Ollama before bundling.",
+    "Don't hardcode one tool-call dialect: Qwen/Hermes use <tool_call> JSON, Mistral uses its own schema, Llama uses yet another. Abstract the parser in strix's planner so you can swap backends without rewriting the engine; let Ollama's native tools API normalize where possible."
+  ],
+  "open_questions": [
+    "What is strix's minimum target hardware? The default model choice differs sharply between an 8GB laptop (Qwen3-4B), a 16GB GPU (Qwen3-8B/14B), and a 24GB/Mac-32GB box (Qwen3-30B-A3B / Mistral-Small-3.2). Confirm the floor spec to pick THE default.",
+    "Will strix bundle/ship a model with the product, or only orchestrate whatever the operator pulls via Ollama? If bundling, Apache-2.0 (Qwen3/Mistral) is effectively mandatory; if operator-supplied, you can support Llama/Hermes/uncensored variants as opt-in.",
+    "How should refusals be handled for authorized testing? Decide policy: rely on prompt/scope framing with stock instruct models, support operator-loaded uncensored/abliterated models, or fine-tune. This is a product+legal decision, not purely technical.",
+    "Single model for plan+execute, or split planner (reasoning model) vs executor (tool-calling model)? A two-model design (R1-distill/QwQ planner -> Qwen3/Devstral executor) improves reasoning but doubles memory and complexity.",
+    "Should strix standardize on Ollama (simple, already integrated) or also support a raw llama.cpp server / embedded llama.cpp for true single-static-binary air-gapped distribution? Ollama is a separate dependency; embedding llama.cpp gets closer to the single-binary vision but is more work.",
+    "Vision needs? Mistral-Small-3.1/3.2 and some Qwen models are multimodal — if strix wants to read screenshots/diagrams of scope or web UIs, that narrows the model list."
+  ],
+  "sources": [
+    {
+      "title": "Qwen3: Think Deeper, Act Faster (official blog)",
+      "url": "https://qwenlm.github.io/blog/qwen3/"
+    },
+    {
+      "title": "Qwen3 GitHub (model list, MCP/tool-calling, Apache-2.0)",
+      "url": "https://github.com/QwenLM/Qwen3"
+    },
+    {
+      "title": "Qwen3-30B-A3B-Instruct-2507 (Hugging Face)",
+      "url": "https://huggingface.co/Qwen/Qwen3-30B-A3B-Instruct-2507"
+    },
+    {
+      "title": "Qwen3-4B-Instruct-2507 (Hugging Face)",
+      "url": "https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507"
+    },
+    {
+      "title": "Berkeley Function Calling Leaderboard (BFCL) V4 - Gorilla",
+      "url": "https://gorilla.cs.berkeley.edu/leaderboard.html"
+    },
+    {
+      "title": "BFCL Benchmark Leaderboard (open-model scores)",
+      "url": "https://llm-stats.com/benchmarks/bfcl"
+    },
+    {
+      "title": "Mistral-Small-3.1-24B-Instruct-2503 GGUF (Apache-2.0, Unsloth)",
+      "url": "https://huggingface.co/unsloth/Mistral-Small-3.1-24B-Instruct-2503-GGUF"
+    },
+    {
+      "title": "Mistral-Small-3.2-24B-Instruct-2506 GGUF",
+      "url": "https://huggingface.co/gabriellarson/Mistral-Small-3.2-24B-Instruct-2506-GGUF"
+    },
+    {
+      "title": "DeepSeek-R1-Distill-Qwen-32B (Hugging Face)",
+      "url": "https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-32B"
+    },
+    {
+      "title": "DeepSeek R1 Distill: Six Open Reasoning Models Compared",
+      "url": "https://deepseekai.guide/models/deepseek-r1-distill/"
+    },
+    {
+      "title": "Configuring tool calling for deepseek-r1-distill (empty tool_calls failure mode)",
+      "url": "https://github.com/sgl-project/sglang/discussions/12387"
+    },
+    {
+      "title": "Hermes 3 Llama 3.1 8B (Nous Research, structured output/function calling)",
+      "url": "https://huggingface.co/NousResearch/Hermes-3-Llama-3.1-8B"
+    },
+    {
+      "title": "Hermes 3 Technical Report (arXiv)",
+      "url": "https://arxiv.org/pdf/2408.11857"
+    },
+    {
+      "title": "Llama 3.1 Community License Agreement",
+      "url": "https://www.llama.com/llama3_1/license/"
+    },
+    {
+      "title": "Llama 3.1 Acceptable Use Policy",
+      "url": "https://www.llama.com/llama3_1/use-policy/"
+    },
+    {
+      "title": "'Open' AI model licenses often carry concerning restrictions (TechCrunch)",
+      "url": "https://techcrunch.com/2025/03/14/open-ai-model-licenses-often-carry-concerning-restrictions/"
+    },
+    {
+      "title": "TrustedSec — Benchmarking Self-Hosted LLMs for Offensive Security",
+      "url": "https://trustedsec.com/blog/benchmarking-self-hosted-llms-for-offensive-security"
+    },
+    {
+      "title": "On the Surprising Efficacy of LLMs for Penetration-Testing (arXiv)",
+      "url": "https://arxiv.org/pdf/2507.00829"
+    },
+    {
+      "title": "Llama, Mistral, DeepSeek and Qwen Licence Terms Compared for Commercial Use",
+      "url": "https://www.softwareseni.com/llama-mistral-deepseek-and-qwen-licence-terms-compared-for-commercial-use/"
+    },
+    {
+      "title": "Qwen3-2507: Run Locally Guide (Unsloth, quant/VRAM)",
+      "url": "https://unsloth.ai/docs/models/tutorials/qwen3-how-to-run-and-fine-tune/qwen3-2507"
+    }
+  ]
+}

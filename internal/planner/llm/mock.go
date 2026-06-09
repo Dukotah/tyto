@@ -26,7 +26,7 @@ func (m *Mock) Generate(_ context.Context, _, _ string) (string, error) {
 // against the shipped example engagement: one in-scope action that should be
 // ALLOWED, one out-of-scope target that should be DENIED, and one
 // forbidden/over-ceiling action that should also be DENIED. Great for a first
-// offline run with `strix run --engagement configs/engagement.example.yaml --dry-run`.
+// offline run with `tyto run --engagement configs/engagement.example.yaml --dry-run`.
 func NewDemoMock() *Mock {
 	return &Mock{Responses: []string{`{
   "actions": [

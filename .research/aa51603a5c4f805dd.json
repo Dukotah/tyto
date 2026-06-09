@@ -1,0 +1,182 @@
+{
+  "facet": "scanning-tools",
+  "summary": "For strix's port-discovery layer, the strongest fit is a layered Go-native approach: keep the built-in pure-Go TCP-connect scanner as the zero-dependency default, and add naabu (MIT, Go, ProjectDiscovery) as an embedded library for fast SYN/CONNECT/UDP discovery, with praetorian-inc/fingerprintx (Apache-2.0, Go) embedded for protocol/service fingerprinting on the open ports it finds. This trio is fully local, free, no-API-key, and all in Go, so strix stays a single-purpose binary that compiles naabu+fingerprintx in (libpcap/Npcap only needed for privileged SYN scans; CONNECT mode needs nothing). Nmap is the gold standard for service/version/OS detection and NSE, but its license (NPSL — a GPLv2 variant) is a real distribution trap: it broadly defines \"derivative work\" to include software designed to execute Nmap and parse its results, or that bundles nmap-service-probes/nmap-os-db, and forbids embedding in proprietary products without a paid OEM license — so strix should shell out to nmap as an optional, user-installed external tool (never bundle it or reimplement its DB) and treat it as the \"deep scan\" power-up. masscan/zmap (both BSD) are only worth integrating if strix ever targets very large IP ranges; for typical authorized-pentest scope they add packet-stack complexity without benefit. rustscan adds nothing over naabu for a Go project (it's a Rust wrapper that just hands ports to nmap). For TLS, prefer sslscan (GPLv2, C, OpenSSL wrapper) as a lightweight shell-out, or testssl.sh (GPLv2, bash) for depth; SSLyze is excellent but AGPL-3.0, which is hazardous to bundle. Recommended build order: harden the native connect-scanner, then embed naabu, then fingerprintx, then add an optional nmap/sslscan shell-out detected at runtime.",
+  "recommendations": [
+    {
+      "name": "naabu (projectdiscovery/naabu/v2)",
+      "why": "Best primary scanner for strix: pure Go, importable as a library via pkg/runner with an OnResult callback, so it embeds directly into the existing tool.Tool plugin instead of shelling out. Does fast SYN/CONNECT/UDP scans with rate limiting and host discovery. CONNECT mode (the default) needs no privileges or libpcap and works everywhere including Windows; SYN mode is faster/stealthier but needs root + libpcap (Npcap on Windows). Tradeoff: it is a discovery tool only (open/closed ports), not a version/OS detector — pair it with fingerprintx. Pulls in the ProjectDiscovery dependency tree, but that ecosystem (nuclei/httpx/etc.) is a natural future fit for strix.",
+      "license": "MIT",
+      "free_local_no_api": "yes",
+      "integration": "go-lib (import github.com/projectdiscovery/naabu/v2/pkg/runner; build runner.Options with OnResult callback). Fall back to CONNECT scan when not privileged.",
+      "language": "Go",
+      "maturity": "Very actively maintained, flagship ProjectDiscovery tool, production-grade, widely used in 2025-2026 bug bounty/pentest workflows."
+    },
+    {
+      "name": "praetorian-inc/fingerprintx",
+      "why": "Fills naabu's gap: takes host:port pairs and identifies the actual service (SSH, RDP, MySQL, PostgreSQL, Redis, TLS, HTTP, Kafka, MSSQL, etc.) via active protocol probes — strix's local-model brain can reason far better over 'PostgreSQL 14 on 5432' than over 'port 5432 open.' Pure Go and importable as a library, so it composes cleanly downstream of naabu inside one binary. Tradeoff: smaller protocol coverage than nmap's -sV probe DB and weaker exact-version extraction; no OS detection. But it is license-clean (Apache-2.0) where nmap is not, making it the safe native fingerprinting layer.",
+      "license": "Apache-2.0",
+      "free_local_no_api": "yes",
+      "integration": "go-lib (import fingerprintx scan package; feed it the open ports from naabu). Also has a CLI for shell-out if preferred.",
+      "language": "Go",
+      "maturity": "Maintained by Praetorian, stable, designed exactly for the naabu->fingerprint pipeline; good 2024-2025 adoption."
+    },
+    {
+      "name": "Built-in Go TCP-connect scanner (existing internal/tool/builtin/portscan)",
+      "why": "Keep and harden as the always-available zero-dependency default. It already implements the tool.Tool interface, needs no privileges/libpcap, runs identically on Windows/Linux/air-gapped boxes, and produces Findings. Improvements worth making: concurrency with a worker pool + bounded rate (currently serial), configurable port ranges/top-N lists, and simple banner grab (read first bytes after connect) for cheap service hints before invoking fingerprintx. This is the safe baseline so strix is never blind even if naabu's native deps are unavailable.",
+      "license": "N/A (strix's own code)",
+      "free_local_no_api": "yes",
+      "integration": "already native; extend in place. Make naabu the upgrade path, not a replacement.",
+      "language": "Go",
+      "maturity": "In-repo; minimal but working end-to-end through guard->execute->audit."
+    },
+    {
+      "name": "Nmap (+ NSE, -sV, -O)",
+      "why": "The accuracy gold standard for service/version detection, OS fingerprinting, and the huge NSE script library — strix should support it as an OPTIONAL deep-scan power-up that the operator installs separately and strix shells out to, parsing -oX XML. Critical constraint: the Nmap Public Source License (NPSL, a GPLv2 derivative) is NOT a clean permissive license — it defines 'derivative work' broadly to include software designed to run Nmap and parse its output or that bundles nmap-service-probes/nmap-os-db, and it bans embedding in proprietary products without a paid OEM license. So: never vendor nmap, never copy its data files, never make strix's core hard-depend on it; detect it at runtime and treat it as a plugin the user opted into. Reimplementing nmap natively in Go is out of scope (decades of probe/OS data).",
+      "license": "Nmap Public Source License (NPSL; GPLv2-based, not OSI-certified, OEM license required to embed)",
+      "free_local_no_api": "yes",
+      "integration": "shell-out CLI only (exec nmap -sV -oX -, parse XML). Optional, runtime-detected; keep it at arm's length for licensing.",
+      "language": "C/C++ (Lua for NSE)",
+      "maturity": "Industry standard, actively maintained, ubiquitous in 2025-2026."
+    },
+    {
+      "name": "sslscan",
+      "why": "Recommended default for TLS inspection: a small, fast C OpenSSL wrapper that enumerates supported protocols/ciphers, cert details, and common weaknesses, with simple text/XML output that's easy to parse. GPLv2 (clean copyleft) and shells out cleanly; far lighter than testssl.sh and easy to detect/install. Tradeoff: less exhaustive than testssl.sh on edge-case vulns and depends on the linked OpenSSL's capabilities.",
+      "license": "GPLv2 (OpenSSL-linked)",
+      "free_local_no_api": "yes",
+      "integration": "shell-out CLI (sslscan --xml=- target:443, parse XML).",
+      "language": "C",
+      "maturity": "Maintained (rbsec fork), packaged in Kali/Debian, stable."
+    },
+    {
+      "name": "testssl.sh",
+      "why": "Best for DEPTH of TLS analysis when the operator wants it: a pure-bash script (uses system openssl) covering protocols, ciphers, cert chain, and a long list of named vulns (Heartbleed, ROBOT, etc.), with --jsonfile output that's trivial to ingest. GPLv2, fully offline. Tradeoffs: bash means clunky on native Windows (needs WSL2/Cygwin/Git-bash) — relevant since the operator is on Windows — and it is slower than sslscan. Good as an optional 'thorough TLS' shell-out alongside sslscan.",
+      "license": "GPLv2",
+      "free_local_no_api": "yes",
+      "integration": "shell-out CLI (testssl.sh --jsonfile out.json target); parse JSON. Needs a bash environment on Windows.",
+      "language": "Bash (+ openssl)",
+      "maturity": "Actively maintained, de facto standard for thorough TLS testing in 2025-2026."
+    },
+    {
+      "name": "masscan / zmap (consider, do not adopt now)",
+      "why": "Only justified if strix ever needs internet-scale or very large CIDR sweeps (millions of pps via their own user-space TCP/IP stacks). Both are permissive BSD (clean to integrate/shell-out). For typical authorized engagements with defined scope, they are overkill and add operational friction: custom packet stack, RST-race banner-grabbing caveats (masscan needs firewall workarounds to grab banners), and root + raw-socket/Npcap requirements. naabu already covers the realistic speed need. Revisit only for an attack-surface-mapping mode.",
+      "license": "BSD (masscan: BSD; zmap: 3-clause BSD)",
+      "free_local_no_api": "yes",
+      "integration": "shell-out CLI if ever needed (parse list/JSON output); not a library for Go.",
+      "language": "C",
+      "maturity": "Both mature and maintained; masscan very widely used for large-scale discovery."
+    },
+    {
+      "name": "rustscan (skip)",
+      "why": "No advantage for a Go-native project. It's a Rust front-end that fast-finds ports then hands them to nmap for the real work — strix gets the same architecture more cleanly with naabu (in-process, MIT, no Rust toolchain) plus an optional nmap shell-out. Adding it would mean an external Rust binary dependency and still inherit the nmap shell-out anyway. Mentioned only to justify exclusion.",
+      "license": "GPLv3",
+      "free_local_no_api": "yes",
+      "integration": "would be shell-out CLI; recommended NOT to integrate.",
+      "language": "Rust",
+      "maturity": "Popular and maintained, but redundant given naabu."
+    }
+  ],
+  "pitfalls": [
+    "NPSL licensing trap: Nmap is NOT permissively licensed. The NPSL (GPLv2-derivative) broadly defines 'derivative work' to include software designed to execute Nmap and parse its results, and software bundling nmap-service-probes or nmap-os-db. Bundling nmap, copying its data files, or making strix's core depend on it can trigger copyleft/OEM-license obligations — especially if strix is ever sold or distributed as a polished product. Keep nmap as an optional, user-installed, runtime-detected shell-out only.",
+    "SSLyze is AGPL-3.0. It is technically excellent (Python lib + JSON output), but AGPL is the most aggressive copyleft and is dangerous to embed/distribute with a product you may want to keep proprietary. Prefer sslscan (GPLv2) or testssl.sh (GPLv2); if using SSLyze, isolate it as a separately-installed external CLI and understand the AGPL implications.",
+    "SYN scanning needs privileges + a packet driver. naabu SYN mode and masscan/zmap require root/Administrator plus libpcap (Npcap on Windows). Npcap's own license has redistribution restrictions for bundling. Make CONNECT scan the default and only escalate to SYN when privileges + driver are present; never silently require root.",
+    "Windows reality for the operator: testssl.sh is bash and needs WSL2/Cygwin/Git-bash; masscan/zmap/SYN scans need Npcap. The pure-Go path (native connect scanner + naabu CONNECT + fingerprintx) is the only part guaranteed to work on a bare Windows box, which matters for a 'runs on the operator's own machine' product.",
+    "naabu CONNECT vs SYN accuracy/stealth tradeoff: CONNECT completes the handshake (no privileges, but noisier in target logs and slower), SYN is faster/stealthier but privileged. The Scope Guard / ROE should drive which mode is allowed, and the audit log should record which was used.",
+    "Don't reimplement nmap's version/OS DB in Go — it's decades of curated probe and OS-fingerprint data under NPSL. fingerprintx gives 'good enough' native fingerprinting; nmap shell-out gives gold-standard depth. Trying to port the DBs is both infeasible and a license violation.",
+    "masscan banner grabbing is fragile: because it runs its own TCP/IP stack, the host kernel sends RST and kills connections before banners are captured unless you add firewall rules. Don't rely on masscan for service identification — that's fingerprintx/nmap's job.",
+    "Dependency-tree weight: embedding naabu pulls in the broader ProjectDiscovery module tree (goflags, etc.). That's fine and even strategically useful (future nuclei/httpx integration), but it grows the binary and the dependency surface vs the current minimal scaffold."
+  ],
+  "open_questions": [
+    "Distribution/licensing intent: will strix ever be sold or shipped as a closed-source product? If yes, the optional-shell-out boundary for nmap (NPSL) and avoidance of AGPL SSLyze are hard requirements; if it stays a personal/internal tool, the constraints relax somewhat (but bundling nmap still needs care).",
+    "Is large-range / attack-surface scanning in scope? That's the only thing that justifies adding masscan or zmap; otherwise naabu suffices and they should be dropped.",
+    "Primary OS target for the operator: the current environment is Windows. How much should strix invest in the pure-Go path (works on bare Windows) vs assume a Linux/WSL environment where SYN scans, libpcap, and bash-based testssl.sh are available?",
+    "For OS detection specifically (nmap -O quality), is the fingerprintx/native level acceptable, or is true OS fingerprinting a required feature? If required, that effectively mandates the nmap shell-out and its licensing posture.",
+    "Should TLS inspection be a first-class native capability (e.g., a small Go TLS prober using crypto/tls to enumerate protocols/ciphers/cert details, no external dep) versus shelling out to sslscan/testssl.sh? A minimal Go TLS prober could cover the common 80% offline with zero dependencies and dodge the bash/Windows issue entirely.",
+    "How should scan mode (CONNECT vs SYN), rate limits, and timing be expressed in the engagement ROE so the Scope Guard can deterministically allow/deny stealth-vs-speed choices the local model proposes?"
+  ],
+  "sources": [
+    {
+      "title": "projectdiscovery/naabu (GitHub README) — features, install, library usage",
+      "url": "https://github.com/projectdiscovery/naabu/blob/main/README.md"
+    },
+    {
+      "title": "Naabu Overview — ProjectDiscovery Docs",
+      "url": "https://docs.projectdiscovery.io/opensource/naabu/overview"
+    },
+    {
+      "title": "naabu runner package (Go library API)",
+      "url": "https://pkg.go.dev/github.com/projectdiscovery/naabu/v2"
+    },
+    {
+      "title": "praetorian-inc/fingerprintx (GitHub) — service fingerprinting, Go library",
+      "url": "https://github.com/praetorian-inc/fingerprintx"
+    },
+    {
+      "title": "fingerprintx LICENSE (Apache-2.0)",
+      "url": "https://github.com/praetorian-inc/fingerprintx/blob/main/LICENSE"
+    },
+    {
+      "title": "Introducing FingerprintX — Praetorian blog",
+      "url": "https://www.praetorian.com/blog/fingerprintx/"
+    },
+    {
+      "title": "Nmap Public Source License (NPSL)",
+      "url": "https://nmap.org/npsl/"
+    },
+    {
+      "title": "NPSL Annotated Text — derivative-work definition and OEM embedding restrictions",
+      "url": "https://nmap.org/npsl/npsl-annotated.html"
+    },
+    {
+      "title": "A license change for Nmap — LWN.net",
+      "url": "https://lwn.net/Articles/842436/"
+    },
+    {
+      "title": "Fedora Project Wiki — Licensing/Nmap (FLOSS-compatibility concerns)",
+      "url": "https://fedoraproject.org/wiki/Licensing/Nmap"
+    },
+    {
+      "title": "Service and Version Detection — Nmap Network Scanning",
+      "url": "https://nmap.org/book/man-version-detection.html"
+    },
+    {
+      "title": "Nmap Scripting Engine (NSE) — Nmap Network Scanning",
+      "url": "https://nmap.org/book/man-nse.html"
+    },
+    {
+      "title": "robertdavidgraham/masscan (GitHub) — BSD, internet-scale SYN scanner, banner caveats",
+      "url": "https://github.com/robertdavidgraham/masscan"
+    },
+    {
+      "title": "Top Network Scanners Compared: Nmap, Masscan, ZMap, and More — findsec.org",
+      "url": "https://findsec.org/index.php/blog/493-nmap-vs-masscan-zmap-rustscan-comparison"
+    },
+    {
+      "title": "bee-san/RustScan (GitHub) — Rust scanner that pipes to nmap",
+      "url": "https://github.com/bee-san/RustScan"
+    },
+    {
+      "title": "RustScan Nmap Integration — DeepWiki",
+      "url": "https://deepwiki.com/bee-san/RustScan/4.2-nmap-integration"
+    },
+    {
+      "title": "testssl/testssl.sh (GitHub) — GPLv2 bash TLS tester, JSON output",
+      "url": "https://github.com/testssl/testssl.sh"
+    },
+    {
+      "title": "testssl.sh project site",
+      "url": "https://testssl.sh/"
+    },
+    {
+      "title": "nabla-c0d3/sslyze (GitHub) — AGPL-3.0 SSL/TLS scanning library",
+      "url": "https://github.com/nabla-c0d3/sslyze"
+    },
+    {
+      "title": "google/gopacket synscan example — native Go SYN scanning reference",
+      "url": "https://github.com/google/gopacket/blob/master/examples/synscan/main.go"
+    },
+    {
+      "title": "Npcap — Windows packet capture library (required for SYN scans on Windows)",
+      "url": "https://npcap.com/"
+    }
+  ]
+}

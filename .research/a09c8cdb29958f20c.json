@@ -1,0 +1,139 @@
+{
+  "facet": "exploitation",
+  "summary": "Exploitation/post-exploitation is the highest-risk facet of strix and should be the last phase built, fully opt-in, and hard-gated by the deterministic Scope Guard plus a mandatory human-approval step — never decided autonomously by the local model. The recommended primary integration is Metasploit Framework via msfrpcd's RPC API (3-clause BSD, fully local/free/no-key, Ruby daemon): strix shells out to start msfrpcd and drives it over MessagePack-RPC (or HTTP), giving access to thousands of vetted exploit/payload/post modules while keeping a clean machine boundary. For C2/post-exploitation, Sliver (GPLv3, written in Go, gRPC-over-mTLS teamserver) is the best fit since strix is Go — it can speak the same gRPC/protobuf the SliverPy client uses, all local; Havoc (Go server / C/C++ agent) is a viable alternative but is more red-team/adversary-emulation-flavored and less suited to a clean library boundary. sqlmap (--os-shell/--os-pwn) and searchsploit/exploit-db (offline, air-gap friendly) round out targeted exploitation and offline exploit lookup via simple CLI shell-outs. The critical design rule: an autonomous agent that processes untrusted target output, holds exploit capability, and has network egress is a textbook \"lethal trifecta\" (Willison, 2025) — strix must break that trifecta with RoE category gates, sandboxed execution (separate VM/microVM, no production data path), blast-radius caps (no auto-pivot, no destructive payloads, throttled session count), and per-exploit human sign-off, with every gated decision audited. Recommend a multi-stage rollout: scanning/enumeration first (already done), then read-only vuln verification, and exploitation only behind an explicit high-risk RoE flag plus interactive approval, defaulting OFF.",
+  "recommendations": [
+    {
+      "name": "Metasploit Framework (msfrpcd / RPC API)",
+      "why": "The de-facto exploitation engine: thousands of maintained exploit, payload, encoder and post modules. strix should NOT reimplement exploits — shell out to launch msfrpcd then drive it programmatically over its MessagePack/HTTP RPC (auth.login returns a 5-min token; modules.execute, sessions, jobs, db, consoles namespaces). This keeps a clean process boundary so Metasploit (Ruby) stays out of the Go binary while strix orchestrates. Tradeoffs: heavy Ruby+Postgres dependency (breaks the single-static-binary ideal — make it an optional, separately-installed backend), noisy/detectable, and inherently the most dangerous capability so it must be the LAST phase and hard-gated.",
+      "license": "3-clause BSD (Rapid7)",
+      "free_local_no_api": "yes",
+      "integration": "shell-out to start msfrpcd + RPC/HTTP (MessagePack) client written in Go; treat as an optional external backend, not embedded",
+      "language": "Ruby",
+      "maturity": "Industry standard, actively maintained by Rapid7 in 2025-2026, daily module updates"
+    },
+    {
+      "name": "Sliver (C2 / post-exploitation)",
+      "why": "Best post-exploitation/C2 fit for strix because it is written in Go and exposes a gRPC-over-mTLS teamserver (the same interface SliverPy uses via operator config files: name/host/port/token/CA+cert+key). strix can generate an operator config and speak gRPC/protobuf directly from Go — fully local, no cloud. Supports mTLS/WireGuard/HTTPS/DNS implants, sessions and low-and-slow beacons, multiplayer, and an Armory extension manager. Tradeoffs: real C2 = real blast radius; only ever for authorized engagements, sandboxed, and behind human approval. Implant generation/persistence must be RoE-gated and never auto-deployed.",
+      "license": "GPLv3 (some subcomponents differ)",
+      "free_local_no_api": "yes",
+      "integration": "go-lib / gRPC: connect to a local Sliver teamserver via gRPC-over-mTLS using an operator config; reuse Sliver's protobuf service definitions in Go",
+      "language": "Go",
+      "maturity": "Maintained by Bishop Fox, v1.6 line active in 2025-2026, widely used, production-grade"
+    },
+    {
+      "name": "sqlmap (--os-shell / --os-pwn takeover)",
+      "why": "Automates SQLi detection through to OS-level takeover: --os-shell for command exec via sys_exec()/xp_cmdshell, --os-pwn to drop a Metasploit stager (cmd/Meterpreter/VNC) on MySQL/PostgreSQL/MSSQL. Pairs naturally with the Metasploit backend. Easiest integration is a CLI shell-out with --batch and structured output dirs. Tradeoffs: the takeover switches are destructive/high-impact — strix should allow detection/enumeration freely but gate --os-shell/--os-pwn/--file-write behind the same high-risk RoE flag + approval as Metasploit.",
+      "license": "GPLv2",
+      "free_local_no_api": "yes",
+      "integration": "shell-out CLI (--batch, parse output/session files); reuse its built-in MSF handoff for --os-pwn",
+      "language": "Python",
+      "maturity": "Standard tool, actively maintained 2025, ubiquitous in pentest workflows"
+    },
+    {
+      "name": "searchsploit / Exploit-DB (offline)",
+      "why": "Lets strix's local model map discovered software/versions/CVEs to known public exploits entirely offline against a checked-out Exploit-DB copy — ideal for air-gapped engagements (a strix hard constraint). Low-risk (it is lookup/reference, not execution) so it can run un-gated as part of enumeration; flags which entries have Metasploit modules to feed the gated exploit phase. Tradeoffs: results are raw public PoCs that should be treated as untrusted code and never auto-run — surface them to the operator, do not execute.",
+      "license": "GPLv2 (exploitdb tooling); individual exploits vary",
+      "free_local_no_api": "yes",
+      "integration": "shell-out CLI (searchsploit --cve / -j JSON output) against a local exploitdb checkout; or query the local files directly",
+      "language": "Bash/Python (tooling), exploits in many languages",
+      "maturity": "Maintained by OffSec, standard on Kali, updated through 2025-2026"
+    },
+    {
+      "name": "Havoc (alternative C2)",
+      "why": "A modern, actively-maintained open-source C2 (Go server, C/C++ agent, Qt client) — a credible Sliver alternative if you want more evasion-focused/malleable tradecraft. Listed as an alternative, not the primary, because its automation surface is less clean than Sliver's gRPC and its tooling is geared toward red-team adversary emulation rather than a library-style backend for a Go orchestrator. Same severe gating requirements as any C2.",
+      "license": "See repo (HavocFramework/Havoc); review before bundling",
+      "free_local_no_api": "yes",
+      "integration": "shell-out / teamserver API; less first-class Go-library integration than Sliver",
+      "language": "Go (server) + C/C++ (agent)",
+      "maturity": "Actively developed since Oct 2022 by C5pider + community, popular in 2025-2026"
+    }
+  ],
+  "pitfalls": [
+    "Lethal trifecta (Willison 2025): an autonomous agent that (1) ingests untrusted target output (banners, web pages, error messages — all attacker-controllable), (2) holds exploit/command-exec capability, and (3) has network egress, can be prompt-injected by a target into attacking out-of-scope hosts or exfiltrating data. Strix MUST break this trifecta — the Scope Guard (deterministic, not the model) must validate every target/action against RoE BEFORE execution, and exploitation must require human approval.",
+    "Never let the local model autonomously decide to exploit. The model can PROPOSE; a hard-coded gate + interactive human sign-off must APPROVE. Default the entire exploitation category OFF and require an explicit high-risk RoE flag to even enable it.",
+    "Blast radius: C2 implants, Meterpreter sessions, sqlmap --os-pwn and exploit payloads can crash services, persist, or pivot. Cap concurrent sessions, forbid auto-pivot/lateral movement without separate approval, ban known-destructive modules (DoS, wipers), and enforce time-window + target-allowlist limits from the engagement model.",
+    "Sandboxing: run exploitation backends (msfrpcd, Sliver teamserver, sqlmap) in an isolated VM/microVM with no path to production credentials or the operator's own data; standard shared-kernel containers are considered insufficient isolation for LLM-driven code execution in 2026 guidance (prefer Firecracker/gVisor-class isolation).",
+    "Treat all fetched exploit code (Exploit-DB PoCs, downloaded modules) as untrusted — surface to the operator for review; never auto-compile/auto-run. PoCs frequently contain destructive or backdoored behavior.",
+    "Dependency weight: Metasploit (Ruby+Postgres) and sqlmap (Python) break strix's single-static-binary goal. Keep them as OPTIONAL, separately-installed backends discovered at runtime; core strix must function (recon/scan) without them.",
+    "Legal exposure: exploitation without written authorization is a crime. Strix must refuse to enable the exploitation phase unless the engagement record contains an authorization artifact and scope, and must audit who approved each exploit action (the 'authorized, controlled, documented, defensible' standard).",
+    "Auditability gaps: every gated decision (proposed -> guard verdict -> human approval -> result) must be logged with decision-level metadata so a misbehaving agent or scope breach is detectable after the fact; this is also evidence for the client report."
+  ],
+  "open_questions": [
+    "Should strix's MVP ship ANY exploitation at all, or stop at vuln verification (safe, lower legal risk) and defer all of Metasploit/Sliver/sqlmap-takeover to a clearly-labeled later phase? (Strong recommendation: defer exploitation; ship recon + scan + read-only vuln verification first.)",
+    "What exactly is the human-approval UX in an offline TUI/CLI — per-exploit interactive y/N prompt, a pre-approved exploit allowlist signed into the RoE, or both? Who is authorized to approve, and is that identity recorded?",
+    "Which isolation level is acceptable to the user's threat model: a dedicated attacker VM the operator manages, or does strix need to provision/verify microVM sandboxing for backends? (Affects single-binary goal.)",
+    "Should C2 (Sliver/Havoc) be in scope at all for a self-service product, given the dual-use/abuse risk and that real C2 persistence raises the legal/ethical bar far above one-shot exploitation?",
+    "How does strix verify the authorization artifact is genuine (e.g., signed scope file) before unlocking high-risk categories, so the gate can't be trivially toggled?",
+    "License compatibility: Sliver and Havoc are GPLv3-family. If strix distributes a single binary that links Sliver Go packages, GPLv3 obligations attach — shelling out / separate-process gRPC avoids this. Confirm the integration boundary with the project's intended license."
+  ],
+  "sources": [
+    {
+      "title": "Metasploit RPC API documentation (Rapid7)",
+      "url": "https://docs.rapid7.com/metasploit/rpc-api/"
+    },
+    {
+      "title": "rapid7/metasploit-framework LICENSE (3-clause BSD)",
+      "url": "https://github.com/rapid7/metasploit-framework/blob/master/LICENSE"
+    },
+    {
+      "title": "pymetasploit3 — Metasploit RPC automation library (msfrpcd usage reference)",
+      "url": "https://github.com/DanMcInerney/pymetasploit3"
+    },
+    {
+      "title": "BishopFox/sliver — Adversary Emulation Framework (Go, GPLv3, gRPC)",
+      "url": "https://github.com/BishopFox/sliver"
+    },
+    {
+      "title": "SliverPy — Python gRPC client for Sliver (operator config, mTLS automation)",
+      "url": "https://sliverpy.readthedocs.io/"
+    },
+    {
+      "title": "Sliver tool overview (Bishop Fox)",
+      "url": "https://bishopfox.com/tools/sliver"
+    },
+    {
+      "title": "HavocFramework/Havoc — The Havoc Framework",
+      "url": "https://github.com/HavocFramework/Havoc"
+    },
+    {
+      "title": "Havoc C2 Framework — Red Teamer's Guide (RedfoxSec, status/features)",
+      "url": "https://www.redfoxsec.com/blog/havoc-c2-framework-a-red-teamers-complete-guide-to-setup-commands-and-tradecraft"
+    },
+    {
+      "title": "sqlmap OS command execution (--os-shell/--os-pwn) — DeepWiki",
+      "url": "https://deepwiki.com/sqlmapproject/sqlmap/5.1-os-command-execution"
+    },
+    {
+      "title": "sqlmap: open-source SQLi and database takeover tool (Help Net Security, Nov 2025)",
+      "url": "https://www.helpnetsecurity.com/2025/11/10/sqlmap-open-source-sql-injection-database-takeover-tool/"
+    },
+    {
+      "title": "Exploit Database SearchSploit Manual (offline/air-gap usage)",
+      "url": "https://www.exploit-db.com/searchsploit"
+    },
+    {
+      "title": "exploitdb — Kali Linux Tools",
+      "url": "https://www.kali.org/tools/exploitdb/"
+    },
+    {
+      "title": "The lethal trifecta for AI agents (Simon Willison, Jun 2025)",
+      "url": "https://simonwillison.net/2025/Jun/16/the-lethal-trifecta/"
+    },
+    {
+      "title": "Ethical Considerations in AI-Driven Penetration Testing: A Governance Framework (XBOW)",
+      "url": "https://xbow.com/blog/ethical-considerations-ai-pentesting"
+    },
+    {
+      "title": "What Is Autonomous Pentesting? (Picus — scope, validation, auditability)",
+      "url": "https://www.picussecurity.com/resource/blog/what-is-autonomous-pentesting"
+    },
+    {
+      "title": "Agentic AI Attacks Explained 2026 — blast radius, HITL gating, isolation (ToxSec)",
+      "url": "https://www.toxsec.com/p/agentic-ai-attacks-explained-lethal-trifecta"
+    },
+    {
+      "title": "AI Agent Sandboxing Enterprise Security Guide 2026 (Firecracker/gVisor isolation)",
+      "url": "https://beyondscale.tech/blog/ai-agent-sandboxing-enterprise-security-guide"
+    }
+  ]
+}

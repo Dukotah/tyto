@@ -6,7 +6,7 @@ package tool
 import (
 	"context"
 
-	"github.com/dukotah/strix/internal/action"
+	"github.com/dukotah/tyto/internal/action"
 )
 
 // Tool is a single capability the engine can invoke.

@@ -1,5 +1,5 @@
-BINARY := strix
-PKG := github.com/dukotah/strix
+BINARY := tyto
+PKG := github.com/dukotah/tyto
 BIN_DIR := bin
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X $(PKG)/pkg/version.Version=$(VERSION)
@@ -8,9 +8,9 @@ LDFLAGS := -X $(PKG)/pkg/version.Version=$(VERSION)
 
 all: build
 
-build: ## Build the strix binary
+build: ## Build the tyto binary
 	@mkdir -p $(BIN_DIR)
-	go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/$(BINARY) ./cmd/strix
+	go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/$(BINARY) ./cmd/tyto
 
 run: build ## Build and run
 	./$(BIN_DIR)/$(BINARY)
@@ -31,4 +31,4 @@ clean: ## Remove build artifacts
 	rm -rf $(BIN_DIR)
 
 install: build ## Install to GOBIN
-	go install -ldflags "$(LDFLAGS)" ./cmd/strix
+	go install -ldflags "$(LDFLAGS)" ./cmd/tyto

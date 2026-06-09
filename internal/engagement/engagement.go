@@ -1,5 +1,5 @@
 // Package engagement models the contract with the client as data: scope, rules
-// of engagement, objectives, and — required — an authorization record. strix
+// of engagement, objectives, and — required — an authorization record. tyto
 // refuses to run without a valid engagement.
 package engagement
 

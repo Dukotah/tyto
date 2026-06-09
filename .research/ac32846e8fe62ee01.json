@@ -1,0 +1,157 @@
+{
+  "facet": "vuln-scanning",
+  "summary": "For a fully-local, free, no-API-key Go pentest platform, the strongest vulnerability-detection stack splits into two layers that map cleanly onto strix's existing plugin model. (1) Active network/web vuln detection: embed Nuclei v3 directly as a Go library (MIT, github.com/projectdiscovery/nuclei/v3/lib) with a vendored local nuclei-templates checkout and DisableUpdateCheck() — this is the single best fit because it is Go-native, importable into the static binary, runs 100% offline against a local template dir, and gives the broadest community-maintained coverage (10k+ templates) that differentiates strix as a Burp/Nessus-class tool. (2) Version-based CVE matching: this is where offline gets hard. The classic NVD JSON feeds were deprecated Dec 2023, so the practical offline source today is the Fraunhofer FKIE nvd-json-data-feeds GitHub mirror (reconstructed legacy feeds, updated ~every 2h) plus OSV.dev's downloadable per-ecosystem all.zip files. For software/dependency CVEs use Trivy (Apache-2.0, Go, embeddable) or OSV-Scanner (Apache-2.0, Go, embeddable) — both support true offline DBs you sync once and ship. For service/banner-to-CVE matching during a network engagement, shell out to Nmap with the offline vulscan.nse (local CSV DBs); avoid vulners.nse since it requires the online API. OpenVAS/Greenbone gives the deepest authenticated/NASL coverage but is a heavy multi-container Python/C stack you can only integrate via GMP socket/subprocess, not embed — recommend it as an optional \"deep scan\" adapter, not a core dependency. Keeping data fresh on an air-gapped box means a periodic \"feed bundle\" you build on an online machine (nuclei-templates git pull, trivy-db OCI pull, OSV all.zip, FKIE NVD feed) and copy over — strix should own a feed-manager command for this.",
+  "recommendations": [
+    {
+      "name": "Nuclei v3 (engine + nuclei-templates)",
+      "why": "Best overall fit and the recommended core. Go-native, importable as github.com/projectdiscovery/nuclei/v3/lib so it links into strix's single static binary — no subprocess needed. Runs fully offline: point WithTemplatesOrWorkflows at a vendored local nuclei-templates dir and call DisableUpdateCheck(). 10k+ community templates covering web/API/network/DNS/cloud misconfig and known-CVE checks — this is what lets strix compete with Nessus/Burp on active detection. Tradeoff: SDK has breaking changes between minor versions, so pin the version; templates are version-coupled to the engine so sync them together. The local LLM brain can select template tags/severity per scope, which is the natural differentiator.",
+      "license": "MIT (engine and templates)",
+      "free_local_no_api": "yes",
+      "integration": "go-lib (import nuclei/v3/lib; vendor templates dir, DisableUpdateCheck)",
+      "language": "Go",
+      "maturity": "Very actively maintained 2025-2026, ProjectDiscovery flagship, huge community, production-grade"
+    },
+    {
+      "name": "Trivy",
+      "why": "Recommended for software/package/SBOM/container/IaC CVE detection. Apache-2.0, written in Go, embeddable via github.com/aquasecurity/trivy packages (or shell out for simplicity). True air-gap support: pull trivy-db (and java-db) once via ORAS/oras cp from ghcr.io or download trivy-offline.db.tgz, drop into the cache dir, run with offline flags so it never phones home. Broad coverage of OS packages and language deps. Tradeoff: DB is large-ish and must be refreshed periodically; the Go API surface is big and changes, so shelling out to the CLI with JSON output is the lower-risk integration for a vibe-coded build.",
+      "license": "Apache-2.0",
+      "free_local_no_api": "yes",
+      "integration": "shell-out CLI (JSON output) preferred; go-lib possible",
+      "language": "Go",
+      "maturity": "Industry-standard, very active, Aqua-backed, production-ready"
+    },
+    {
+      "name": "OSV-Scanner (v2)",
+      "why": "Recommended companion to Trivy for dependency/lockfile vuln scanning across 11+ ecosystems (Go, npm, PyPI, Maven, Cargo, etc.). Apache-2.0, Go, by Google, built on OSV-Scalibr. First-class offline mode: --offline / --offline-vulnerabilities with --download-offline-databases pulls per-ecosystem all.zip into a local dir; zero network at scan time after sync. Lighter and more dependency-focused than Trivy; many teams run both. Tradeoff: overlaps Trivy on language deps — pick one as primary (Trivy if you also want OS-package/container coverage, OSV if you mainly scan source repos). Manual DB download via https://osv-vulnerabilities.storage.googleapis.com/<ECOSYSTEM>/all.zip aids air-gap bundling.",
+      "license": "Apache-2.0",
+      "free_local_no_api": "yes",
+      "integration": "shell-out CLI (or import google/osv-scanner/v2 / OSV-Scalibr as go-lib)",
+      "language": "Go",
+      "maturity": "Active (v2 Mar 2025, v2.3.x 2026), Google-maintained, production-ready"
+    },
+    {
+      "name": "FKIE nvd-json-data-feeds (offline NVD/CVE source)",
+      "why": "The practical offline CVE/CPE data source now that NIST deprecated the legacy JSON NVD feeds (Dec 2023) and pushed everyone to the rate-limited NVD 2.0 API (needs network, effectively a key for usable rates). The Fraunhofer FKIE community project reconstructs the legacy feeds as year-partitioned JSON plus 'recent'/'modified'/'all' snapshots, synced ~every 2h, distributed via GitHub. strix's feed-manager git-pulls this on an online machine and ships the snapshot to the air-gapped box for local CPE->CVE matching that backs banner/version detection. Tradeoff: it is a community redistribution (not NIST-endorsed) and you must build your own CPE-matching logic (or reuse facebookincubator/nvdtools, a Go toolkit for NVD feeds).",
+      "license": "Data redistributed from NVD (public domain); repo tooling open source",
+      "free_local_no_api": "yes",
+      "integration": "go-lib for matching (facebookincubator/nvdtools) over git-synced JSON feed files",
+      "language": "Data (JSON) + Go tooling",
+      "maturity": "Actively updated daily/2-hourly in 2025-2026; widely used as the NVD-feed replacement"
+    },
+    {
+      "name": "Nmap + vulscan.nse (offline service->CVE)",
+      "why": "For network engagements, the right offline way to turn open-port/version banners into candidate CVEs. vulscan (scipag) ships local CSV databases (NVD/CVE/OSVDB/etc.) and matches offline — unlike vulners.nse which needs the online Vulners API (full DB is >250GB, not localizable). strix already shells out for portscan, so add an Nmap adapter that runs -sV with --script vulscan and parses output. Tradeoff: version-string matching is noisy/false-positive-prone (good candidate for the local LLM to triage), and the bundled CSVs lag NVD — refresh them in the feed bundle. Nmap core is NPSL/GPL-derived; treat as an external CLI dependency, never linked in.",
+      "license": "Nmap NPSL (GPL-derived); vulscan GPL",
+      "free_local_no_api": "yes",
+      "integration": "shell-out CLI (nmap -sV --script vulscan, parse -oX XML)",
+      "language": "Lua (NSE) on C (Nmap)",
+      "maturity": "Nmap perennial; vulscan maintained, DBs need manual refresh"
+    },
+    {
+      "name": "OpenVAS / Greenbone Community Edition",
+      "why": "Deepest authenticated and NASL-based vuln coverage (closest free analog to Nessus) and worth offering as an optional 'deep scan' backend — NOT a core dependency. It is a heavy multi-component stack (gvmd, openvas-scanner/openvasd, notus, redis, PostgreSQL) shipped as Docker containers; you cannot embed it in a Go binary. Integrate by talking GMP (XML over Unix socket / port 9390) or driving the containers via subprocess. Offline feed updates are awkward: the Greenbone Community Feed is delivered as container images (greenbone-feed-sync: GVMD_DATA/CERT/SCAP), so air-gapping means mirroring those images and loading them, on a machine with real RAM/disk. Tradeoff: operational weight and offline-feed friction make it a power-user add-on, not the baseline.",
+      "license": "GPL (mixed AGPL/GPL components)",
+      "free_local_no_api": "yes",
+      "integration": "HTTP/RPC (GMP over socket/9390) or shell-out to manage containers",
+      "language": "C + Python (NASL)",
+      "maturity": "Actively maintained 2025-2026 (openvas-scanner 23.x), production-grade but heavy"
+    },
+    {
+      "name": "cve-search (local CVE/CPE store) — alternative",
+      "why": "Alternative to building your own CPE-matcher on the FKIE feed. Imports CVE+CPE into MongoDB and exposes local search + a web API for vendor:product:version queries fully offline (designed to avoid public lookups). Useful if you want a ready-made queryable CVE backend behind strix's version-matching. Tradeoff: Python + MongoDB runtime is extra weight against the single-static-binary goal — prefer it only if you don't want to write matching in Go; otherwise nvdtools over the FKIE feed keeps the stack Go-only.",
+      "license": "Open source (AGPL/BSD components)",
+      "free_local_no_api": "yes",
+      "integration": "HTTP/RPC (local web API) or shell-out to its query tools",
+      "language": "Python + MongoDB",
+      "maturity": "Long-running, actively maintained (PyMongo 4.x / MongoDB 8.0 support 2025)"
+    }
+  ],
+  "pitfalls": [
+    "NVD legacy JSON feeds were deprecated in Dec 2023; do NOT design around downloading nvd.nist.gov feeds directly. The 2.0 API is online-only and heavily rate-limited without a (free but online-requiring) key — neither fits air-gap. Use the FKIE nvd-json-data-feeds mirror or OSV/Trivy DBs instead.",
+    "vulners.nse cannot run offline — it queries the Vulners API every time because the full DB is >250GB. Only vulscan.nse works locally. Don't confuse the two.",
+    "Nuclei engine and nuclei-templates are version-coupled and the Go SDK has documented breaking changes between minor releases. Pin both and sync them as a unit, or scans silently break/skip templates.",
+    "Version-banner-to-CVE matching (vulscan, raw CPE matching) is high false-positive. Without authentication it guesses from version strings. Plan for the local LLM to triage/rank results and for Scope Guard to gate any active exploitation that follows.",
+    "OpenVAS/Greenbone is not embeddable and its offline feed sync is container-image-based, not a simple file download. Treating it as a core dependency will bloat strix and break the single-static-binary vision; keep it an optional adapter.",
+    "Trivy and OSV-Scanner overlap heavily on language-dependency CVEs. Running both as primary wastes effort and double-reports — choose one primary and use the other only for its unique coverage (Trivy: OS pkgs/containers/IaC; OSV: source-repo lockfiles).",
+    "Air-gapped freshness is the real product problem: every DB (nuclei-templates, trivy-db, OSV all.zip, FKIE NVD) has its own update cadence and transport (git, OCI/ORAS, plain zip, container images). You need one strix-owned feed-bundle command run on an online host to avoid silent staleness; stale vuln data is worse than none because it gives false assurance.",
+    "Licenses are mixed: Nuclei/Trivy/OSV are MIT/Apache (safe to embed/ship), but Nmap (NPSL/GPL-derived) and OpenVAS (GPL/AGPL) must stay as external processes, never statically linked, to avoid copyleft contamination of strix's binary."
+  ],
+  "open_questions": [
+    "Primary dependency-CVE scanner: Trivy or OSV-Scanner? (Trivy if container/OS-package/IaC coverage matters; OSV if strix mainly scans source repos and you want lighter, Go-embeddable.)",
+    "Build the CPE->CVE matcher in-Go over the FKIE feed using facebookincubator/nvdtools, or stand up cve-search (Python+Mongo)? The former preserves the single-binary goal; the latter is faster to wire up for a vibe-coded build.",
+    "Should Nuclei be embedded as a Go library (tighter integration, version-pin pain) or shelled out as the nuclei CLI (looser coupling, easier upgrades)? Library is more 'product-grade' but riskier with breaking SDK changes.",
+    "Is OpenVAS in-scope at all for v1, or deferred? Its weight may not be worth it until strix needs authenticated/credentialed deep scans.",
+    "What feed-refresh cadence and transport does the operator's environment allow (USB sneakernet vs. occasional online window)? This determines how the strix feed-bundle command should package and verify (checksums/signatures) the DBs.",
+    "How should the local LLM be used in the vuln-detection loop — only to triage/dedupe/rank findings, or also to select nuclei template tags and decide follow-on actions (all under Scope Guard)?"
+  ],
+  "sources": [
+    {
+      "title": "Nuclei SDK (lib) — pkg.go.dev",
+      "url": "https://pkg.go.dev/github.com/projectdiscovery/nuclei/v3/lib"
+    },
+    {
+      "title": "Nuclei SDK — ProjectDiscovery Docs",
+      "url": "https://docs.projectdiscovery.io/tools/nuclei/nuclei-sdk"
+    },
+    {
+      "title": "projectdiscovery/nuclei (GitHub, MIT)",
+      "url": "https://github.com/projectdiscovery/nuclei"
+    },
+    {
+      "title": "projectdiscovery/nuclei-templates (MIT)",
+      "url": "https://github.com/projectdiscovery/nuclei-templates"
+    },
+    {
+      "title": "Trivy — Air-Gapped Environment docs",
+      "url": "https://trivy.dev/docs/v0.55/advanced/air-gap/"
+    },
+    {
+      "title": "aquasecurity/trivy-db (offline DB releases)",
+      "url": "https://github.com/aquasecurity/trivy-db"
+    },
+    {
+      "title": "Trivy now under Apache-2.0 — Aqua blog",
+      "url": "https://www.aquasec.com/blog/trivy-open-source-vulnerability-scanner-apache2-0-license/"
+    },
+    {
+      "title": "OSV-Scanner Offline Mode docs",
+      "url": "https://google.github.io/osv-scanner/usage/offline-mode/"
+    },
+    {
+      "title": "google/osv-scanner (GitHub, Apache-2.0)",
+      "url": "https://github.com/google/osv-scanner"
+    },
+    {
+      "title": "NVD — Future Changes to the API and Data Feeds (legacy feeds deprecated)",
+      "url": "https://nvd.nist.gov/general/news/changes-to-feeds-and-apis"
+    },
+    {
+      "title": "fkie-cad/nvd-json-data-feeds (legacy NVD feed reconstruction)",
+      "url": "https://github.com/fkie-cad/nvd-json-data-feeds"
+    },
+    {
+      "title": "facebookincubator/nvdtools (Go NVD feed tooling)",
+      "url": "https://github.com/facebookincubator/nvdtools"
+    },
+    {
+      "title": "scipag/vulscan — offline Nmap NSE vuln scanning",
+      "url": "https://github.com/scipag/vulscan"
+    },
+    {
+      "title": "vulners NSE script (online API only) — Nmap NSEDoc",
+      "url": "https://nmap.org/nsedoc/scripts/vulners.html"
+    },
+    {
+      "title": "Greenbone Community Documentation (feed sync / workflows)",
+      "url": "https://greenbone.github.io/docs/latest/22.4/container/workflows.html"
+    },
+    {
+      "title": "greenbone/python-gvm (GMP client)",
+      "url": "https://github.com/greenbone/python-gvm"
+    },
+    {
+      "title": "cve-search/cve-search (local CVE/CPE search)",
+      "url": "https://github.com/cve-search/cve-search"
+    }
+  ]
+}

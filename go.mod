@@ -1,4 +1,4 @@
-module github.com/dukotah/strix
+module github.com/dukotah/tyto
 
 go 1.23
 

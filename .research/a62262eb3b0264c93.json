@@ -1,0 +1,172 @@
+{
+  "facet": "agent-arch",
+  "summary": "For a local-model-driven autonomous pentester, the right architecture is a hierarchical planner/executor loop with bounded re-planning and an explicit, summarized state object — NOT a flat single-step ReAct loop and NOT tree-of-thought. The 2025-2026 consensus across LangGraph, smolagents, and the pentest-agent literature (PentestGPT, HackingBuddyGPT, HackSynth, VulnBot, RedTeamLLM) is that single-agent ReAct loops \"fail almost entirely\" on long end-to-end engagements because of context overflow, error compounding, and the \"soliloquizing\" failure where the model hallucinates tool output instead of executing. Winning designs separate a Planner (strategy over a structured findings/task state) from Executors that run focused subtasks with fresh, small context windows, plus a Summarizer/compaction stage to survive long engagements. Strix's existing plan->guard->execute engine is already the correct skeleton; the highest-value upgrades are (a) feeding tool results back into re-planning across cycles, (b) constrained JSON decoding via Ollama's `format` field so a small local model reliably emits valid actions, (c) context compaction to a durable state object, and (d) treating tool output as untrusted (prompt-injection defense via the dual-LLM/CaMeL split). The deterministic Scope Guard is exactly the right pattern and aligns with the \"secure plan-then-execute\" academic recommendation: validate every action against a whitelist at execution time, never trust the model to self-police. Keep re-planning bounded (max cycles + loop/no-progress detection) to avoid runaway local-model loops. All of this is achievable in pure Go shelling out to Ollama with no API keys, fully offline.",
+  "recommendations": [
+    {
+      "name": "Plan-and-Execute with bounded re-planning (core loop architecture)",
+      "why": "Best fit for multi-step engagements with inter-step dependencies (recon informs scan informs exploit), where a holistic plan beats ReAct's myopic one-step-at-a-time thinking. The 2026 pentest-agent survey found multi-module planner/executor designs (PentestGPT-derived) consistently beat single-loop ReAct, which 'failed almost entirely' on end-to-end pipelines. Strix's engine already plans->guards->executes; the gap is that results are not fed back into the NEXT plan. Fix: after each cycle, append tool findings to the state object and re-plan against it. Make re-planning bounded (MaxCycles already exists) and add no-progress/loop detection (stop if N cycles produce no new findings or repeat an action) to prevent local-model runaway. Tradeoff vs ReAct: a flawed initial plan needs the re-plan step to recover; vs tree-of-thought: far cheaper tokens, which matters for a small local model. Avoid immutable plans — pentest is adaptive, so re-plan each cycle from updated state rather than committing to one upfront plan.",
+      "license": "N/A (architecture pattern)",
+      "free_local_no_api": "yes",
+      "language": "Go (strix's own engine)",
+      "integration": "Extend internal/engine/engine.go to pass tool results back into planner.Plan() each cycle and add loop/no-progress termination; the planner already receives *state.State so wire findings + a per-cycle 'recent actions/results' slice into UserPrompt.",
+      "maturity": "Dominant production pattern; LangGraph 1.0 (Oct 2025) is the reference implementation of stateful plan/execute graphs."
+    },
+    {
+      "name": "Ollama structured outputs (constrained JSON decoding via `format` field)",
+      "why": "The single biggest reliability lever for keeping a SMALL local model on-task. Strix currently asks for 'JSON ONLY' in the prompt and then leniently brace-extracts in parseProposal() — fragile with 3B-8B models that wrap output in prose or emit malformed JSON. Ollama v0.5+ accepts a JSON Schema in the request `format` field and compiles it to a llama.cpp GBNF grammar that masks invalid tokens at sampling time, guaranteeing schema-valid output (SynCode-style GCD shows ~96% syntax-error reduction). This turns 'hope the model emits valid JSON' into 'the model CANNOT emit invalid JSON.' No API key, fully local, runs in the same Ollama you already use. Tradeoff: schema must match strix's `proposal` struct; thinking models may need the schema also echoed in the prompt to ground output.",
+      "license": "MIT (Ollama)",
+      "free_local_no_api": "yes",
+      "language": "Go (server in Go); call via HTTP",
+      "integration": "Set the `format` field (JSON Schema of the proposal struct) in the Ollama /api/chat or /api/generate request inside internal/planner/llm/ollama.go. Optionally also embed the schema string in the prompt. Keep the lenient parser as a fallback.",
+      "maturity": "Stable since Ollama 0.5 (late 2024); standard in 2025-2026."
+    },
+    {
+      "name": "Context compaction + durable structured state (survive long engagements)",
+      "why": "Long engagements blow the context window of a local model (often 8K-32K usable, with 'context rot' degrading quality well before the limit — Chroma 2025 found 30%+ accuracy drops for mid-context info). The converged 2025-2026 answer is a tiered approach: keep a compact STRUCTURED state object (findings, hosts, open ports, task graph) as the source of truth, feed the planner the state summary + only the last N raw turns, and summarize older turns. Strix already has internal/state with a Summary() method — lean into it: the planner should reason over the rolling state summary, never the full raw tool-output history. This is also how PentestGPT-derived agents add a dedicated Summarizer module and how state-compaction architectures use a 2nd LLM callout.",
+      "license": "N/A (pattern); uses your local model for summarization",
+      "free_local_no_api": "yes",
+      "language": "Go",
+      "integration": "Make state.Summary() the primary planner context (already partly done). Add a compaction step: when raw history exceeds a budget, summarize older tool outputs into the state via a local-model call, keep last ~10 turns verbatim. Persist state to disk (JSON) for resumable engagements.",
+      "maturity": "Well-established (ReSum/AgentFold 2025; Anthropic context-engineering guidance; Claude Code /compact)."
+    },
+    {
+      "name": "Dual-LLM / CaMeL-style separation for untrusted tool output (prompt-injection guardrail)",
+      "why": "CRITICAL and under-appreciated for pentesting: tool output (HTTP response bodies, service banners, page content) is attacker-controllable and can prompt-inject your planner into going out of scope or attacking the operator's own box. CaMeL (Google DeepMind, Mar 2026... 2025) neutralized 67% of AgentDojo attacks — the best published defense — by splitting a Privileged LLM (plans, calls tools, never sees raw untrusted data) from a Quarantined LLM (reads untrusted data, returns typed/structured output, cannot call tools). For strix: never paste raw tool stdout into the planner prompt. Instead, run untrusted output through a quarantined extraction step that emits structured findings (ports, versions, URLs) against a fixed schema, and feed only those typed findings to the planner. The deterministic Scope Guard is the final backstop and stays authoritative regardless. Tradeoff: an extra local-model call per noisy tool; cheap given everything is offline.",
+      "license": "N/A (pattern; CaMeL concept is open research)",
+      "free_local_no_api": "yes",
+      "language": "Go",
+      "integration": "Add an extraction layer: tool.Result raw output -> quarantined local-model call with a strict JSON Schema -> typed findings -> state. Planner sees only typed findings, never raw banners. Keep Scope Guard (internal/guard) as the unbypassable final check.",
+      "maturity": "CaMeL is the most-evaluated architectural defense of 2025; dual-LLM pattern dates to 2023 and is widely recommended (Simon Willison's 2025 design-patterns writeup)."
+    },
+    {
+      "name": "Reflection/critic step — use SPARINGLY, with a separate critic",
+      "why": "A reflection pass (critique the plan/results before acting) catches error compounding and can validate that proposed actions actually advance objectives. But the key 2025 finding is SELF-BIAS: a critic that is the same model/prompt as the planner rubber-stamps its own output. So reflection only helps if the critic has a distinct role/prompt (or ideally a different model/temperature) and a concrete checklist (e.g., 'is every target in scope? is risk justified? did the last action make progress?'). For a small local model, a heavy reflection loop adds latency and can amplify hallucination, so gate it: run reflection only on higher-risk actions or when the last cycle made no progress, not every step. Do NOT make this a full multi-critic loop on a 3B-8B local model — overhead outweighs benefit.",
+      "license": "N/A (pattern)",
+      "free_local_no_api": "yes",
+      "language": "Go",
+      "integration": "Optional second local-model call with a distinct 'critic' system prompt before executing medium/high-risk actions; the Scope Guard remains the hard enforcement, the critic is a soft quality gate. Trigger conditionally (risk>=medium or no-progress), not every cycle.",
+      "maturity": "Established pattern (Reflexion-style); 2025 literature warns about single-model self-bias."
+    },
+    {
+      "name": "Avoid Tree-of-Thought for the main loop",
+      "why": "ToT multiplies token cost by the number of explored branches — prohibitive for a small LOCAL model where each generation is already the latency bottleneck, and it shines only when early decisions create high-consequence irreversible branching with no environmental feedback. Pentesting is the opposite: it's feedback-rich (tool output meaningfully informs next steps), so the cheaper iterative plan-and-execute loop is more cost-effective. Reserve ToT-like branching, if ever, for a narrow offline sub-problem (e.g., enumerating candidate exploit paths for one confirmed vuln), not the engagement loop.",
+      "license": "N/A (pattern)",
+      "free_local_no_api": "yes",
+      "language": "Go",
+      "integration": "Do not implement as the core loop. If desired later, scope it to a single bounded decision node.",
+      "maturity": "Mature research concept; 2025 practical guidance says skip it for feedback-rich agentic tasks."
+    },
+    {
+      "name": "Model choice: Qwen3 (4B/8B/30B-A3B) or SmolLM3-3B via Ollama for tool calling",
+      "why": "For the local brain, Qwen3 family is the 2025-2026 standout for tool-calling + structured output + instruction following at sizes that run on an operator laptop. Qwen3-4B-Instruct-2507 is tuned for low-latency tool-calling agents; Qwen3-Coder-30B (MoE, ~3B active) gives strong tool use with 256K context if the machine can hold it. SmolLM3-3B is a notable lightweight alternative with native JSON/XML and Python tool-calling modes. Pair ANY of these with Ollama's grammar-constrained `format` field to compensate for small-model unreliability — the consensus is to select on function-calling + structured-output + recovery-after-failure, not raw benchmark score (a 3.4GB model beat larger ones on tool-calling in 2026 tests). All Apache-2.0, run fully offline in Ollama, no API key.",
+      "license": "Apache-2.0 (Qwen3, SmolLM3)",
+      "free_local_no_api": "yes",
+      "language": "Model weights (run via Ollama, written in Go/llama.cpp)",
+      "integration": "Already supported: strix's internal/planner/llm/ollama.go talks to local Ollama. Set the model name (e.g. qwen3:8b) and add the `format` schema. Keep the mock client for offline tests.",
+      "maturity": "Qwen3 actively maintained, top open-weight agentic family in 2025-2026; SmolLM3 maintained by Hugging Face."
+    }
+  ],
+  "pitfalls": [
+    "Single-step ReAct as the whole engine: documented to 'fail almost entirely' on long pentest pipelines due to context overflow, no memory of past attempts beyond the window, and repeating the same failed action. Strix avoids this by having a state object — keep building on it.",
+    "Soliloquizing / hallucinated tool output: the model imagines an Nmap result instead of running it and then 'reasons' over fiction. Mitigate by always grounding the planner in REAL state.findings produced by actual tool execution, never letting it self-narrate results.",
+    "Feeding raw tool stdout into the planner prompt: HTTP bodies and banners are attacker-controlled and can prompt-inject the agent out of scope or into attacking the operator. Quarantine + structure untrusted output before it reaches the planner (CaMeL/dual-LLM).",
+    "Trusting the model to enforce scope: the current system prompt tells the model to self-police, but the secure plan-then-execute literature is emphatic — validation must be deterministic at execution time. Strix's Scope Guard is correct; never weaken it into model-judgment.",
+    "Lenient JSON brace-extraction as the only parsing strategy: small models frequently emit prose-wrapped or malformed JSON. Without Ollama's grammar-constrained `format`, parse failures will dominate. Switch to schema-constrained decoding.",
+    "Self-bias in reflection loops: a critic using the same model+prompt as the planner rubber-stamps its own plans, adding cost with no quality gain. Give the critic a distinct role/checklist or skip it.",
+    "Unbounded re-planning: a local model can loop forever proposing near-identical actions. Enforce MaxCycles AND no-progress/duplicate-action detection.",
+    "Tree-of-thought on a local model: branch multiplication makes per-step latency explode for little gain in a feedback-rich domain.",
+    "Context rot: even within the token limit, quality degrades and mid-context info gets lost. Don't just grow context — compact aggressively into the structured state and keep only recent raw turns.",
+    "Copying multi-agent frameworks wholesale: LangGraph/AutoGen/CrewAI are Python and pull heavy deps; strix should borrow the PATTERNS (stateful graph, planner/executor roles, compaction) and implement them as plain Go, preserving the single-static-binary goal — do not add a Python runtime dependency."
+  ],
+  "open_questions": [
+    "How many concurrent executors / parallel action branches should the engine support? VulnBot-style task-graph parallelism boosts throughput but complicates the audit log and Scope Guard accounting — start serial, add a bounded worker pool later?",
+    "Should re-planning run every cycle (fully adaptive) or only on failure/no-progress (more predictable, closer to immutable plan-then-execute)? Adaptive suits pentesting but costs more local-model calls.",
+    "Which exact local model to standardize on as the default (Qwen3-8B vs Qwen3-4B vs SmolLM3-3B) given the operator's hardware? Needs a small benchmark on strix's own action schema with grammar-constrained decoding on/off.",
+    "Persistence backend for long-term findings across sessions: flat JSON state file (simplest, single-binary-friendly) vs embedded SQLite/bbolt for a task graph + resumability. PentAGI uses Postgres+pgvector, which conflicts with the air-gapped single-binary vision — likely overkill.",
+    "Should the quarantined-extraction LLM be a second smaller model instance or the same model with a locked-down prompt+grammar? Two instances cost more RAM; one instance is simpler but shares weights.",
+    "Where to draw the human-in-the-loop line: secure plan-then-execute recommends an approval gate between plan and execute for high-risk actions, but full autonomy is part of strix's vision. A configurable risk threshold for pausing may be the answer.",
+    "Does adding a conditional reflection/critic step measurably help a small local model on strix's task, or does it just amplify hallucination? Needs empirical A/B on real engagement traces."
+  ],
+  "sources": [
+    {
+      "title": "ReAct, Plan-and-Execute, or Reflection? The Three Agent Patterns Every Engineer Needs in 2026 (DEV)",
+      "url": "https://dev.to/gabrielanhaia/react-plan-and-execute-or-reflection-the-three-agent-patterns-every-engineer-needs-in-2026-355p"
+    },
+    {
+      "title": "ReAct vs Plan-and-Execute: A Practical Comparison of LLM Agent Patterns (DEV)",
+      "url": "https://dev.to/jamesli/react-vs-plan-and-execute-a-practical-comparison-of-llm-agent-patterns-4gh9"
+    },
+    {
+      "title": "Architecting Resilient LLM Agents: A Guide to Secure Plan-then-Execute Implementations (arXiv 2509.08646)",
+      "url": "https://arxiv.org/pdf/2509.08646"
+    },
+    {
+      "title": "LangGraph Agents in Production: Architecture, Costs & Real-World Outcomes (AlphaBold)",
+      "url": "https://www.alphabold.com/langgraph-agents-in-production/"
+    },
+    {
+      "title": "smolagents: a barebones library for agents that think in code (GitHub)",
+      "url": "https://github.com/huggingface/smolagents"
+    },
+    {
+      "title": "Writing actions as code snippets or JSON blobs (Hugging Face smolagents course)",
+      "url": "https://huggingface.co/learn/agents-course/en/unit2/smolagents/tool_calling_agents"
+    },
+    {
+      "title": "AI Pentesting Agents 2026: The Rise of 39+ Tools Tested (AppSecSanta)",
+      "url": "https://appsecsanta.com/research/ai-pentesting-agents-2026"
+    },
+    {
+      "title": "HackingBuddyGPT: Teaching LLMs to Think Like Penetration Testers (Starlog)",
+      "url": "https://starlog.is/articles/developer-tools/ipa-lab-hackingbuddygpt/"
+    },
+    {
+      "title": "PentestGPT: Building an Autonomous Security Testing Agent with LLM Reasoning Loops (Starlog)",
+      "url": "https://starlog.is/articles/ai-agents/greydgl-pentestgpt/"
+    },
+    {
+      "title": "HackSynth: LLM Agent and Evaluation Framework for Autonomous Penetration Testing (arXiv 2412.01778)",
+      "url": "https://arxiv.org/pdf/2412.01778"
+    },
+    {
+      "title": "Structured Outputs (Ollama docs)",
+      "url": "https://docs.ollama.com/capabilities/structured-outputs"
+    },
+    {
+      "title": "Structured outputs (Ollama blog)",
+      "url": "https://ollama.com/blog/structured-outputs"
+    },
+    {
+      "title": "Flexible and Efficient Grammar-Constrained Decoding (arXiv 2502.05111)",
+      "url": "https://arxiv.org/pdf/2502.05111"
+    },
+    {
+      "title": "Effective context engineering for AI agents (Anthropic)",
+      "url": "https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents"
+    },
+    {
+      "title": "Context Window Management and Session Lifecycle for Long-Running AI Agents (Zylos Research)",
+      "url": "https://zylos.ai/research/2026-03-31-context-window-management-session-lifecycle-long-running-agents/"
+    },
+    {
+      "title": "Design Patterns for Securing LLM Agents against Prompt Injections (Simon Willison)",
+      "url": "https://simonwillison.net/2025/Jun/13/prompt-injection-design-patterns/"
+    },
+    {
+      "title": "Prompt Injection Prevention, The 2025 Playbook With Google CaMeL (BinaryVerseAI)",
+      "url": "https://binaryverseai.com/prompt-injection-prevention-camel/"
+    },
+    {
+      "title": "Dynamic Planning in LLM Agents: From ReAct to Tree-of-Thoughts (Medium, Tao An)",
+      "url": "https://tao-hpu.medium.com/dynamic-planning-in-llm-agents-from-react-to-tree-of-thoughts-a3464a8b114e"
+    },
+    {
+      "title": "5 Small Language Models for Agentic Tool Calling (KDnuggets)",
+      "url": "https://www.kdnuggets.com/5-small-language-models-for-agentic-tool-calling"
+    },
+    {
+      "title": "I Tested 13 Local LLMs on Tool Calling | 2026 Eval Results (JD Hodges)",
+      "url": "https://www.jdhodges.com/blog/local-llms-on-tool-calling-2026-pt1-local-lm/"
+    }
+  ]
+}

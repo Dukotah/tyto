@@ -1,0 +1,187 @@
+{
+  "facet": "reporting",
+  "summary": "For strix, the dual-output strategy is clear: emit machine-readable findings for integration AND generate client-ready PDFs locally, both fully offline with no API keys. For machine-readable findings, SARIF 2.1.0 (OASIS standard, JSON) is the de-facto interchange format — it is what DefectDojo, GitHub code-scanning, and 200+ tools ingest — so strix should make SARIF its primary export even though SARIF was designed for static analysis and is a somewhat awkward fit for dynamic/network pentest results (location model is file/region-centric; you map host:port/URL into artifactLocation+logicalLocations and stuff CVSS/risk into properties bags). Use owenrumney/go-sarif (MIT, pure Go) to write valid SARIF. Severity should be expressed with CVSS: support BOTH v3.1 and v4.0 vectors (v4 is current but only ~26% adopted as of 2025 and NVD still publishes v3.1, so emit both), computed locally with pandatix/go-cvss (MIT, pure Go, all versions). For PDF generation the standout local option is a Typst pipeline: render a Markdown/Typst template to PDF either by shelling out to the typst CLI (Rust, Apache-2.0, 27x faster than XeLaTeX) or — best for strix's single-static-binary vision — embedding Typst as WASM via varunbpatil/typst-go-wasm (MIT, no cgo, no external binary). Pure-Go maroto/v2 (MIT, actively maintained) is the fallback if you want zero non-Go templating. For an optional team/vuln-management hub, DefectDojo (BSD-3, OWASP flagship, self-hostable, free CE, native SARIF importer) is the integration target of choice; Dradis CE (GPLv2) and Faraday CE (GPL-3.0) are pentest-native peers but heavier and GPL. Recommended stack: strix natively writes SARIF + CVSS-scored JSON, generates PDF via embedded/CLI Typst, and offers a one-click DefectDojo push.",
+  "recommendations": [
+    {
+      "name": "SARIF 2.1.0 (OASIS) as primary machine-readable findings format",
+      "why": "OASIS standard JSON format that every major vuln-management/CI tool ingests (DefectDojo, GitHub code scanning, Sonar, 200+ parsers). Adopting it makes strix instantly interoperable. Caveat: SARIF was built for STATIC analysis — its location model is file/line/region centric and descriptions are often ambiguous, so dynamic/network findings (host:port, URL, request/response) must be shoehorned into artifactLocation + logicalLocations + result.properties (a custom property bag). Plan a strix-native richer JSON internally and treat SARIF as an export view, not the source of truth.",
+      "license": "OASIS standard (spec is free/open); format itself is unencumbered",
+      "free_local_no_api": "yes",
+      "integration": "go-lib (emit via owenrumney/go-sarif); pure data format, no runtime dependency",
+      "language": "JSON spec",
+      "maturity": "OASIS Standard since 2020, errata 01 (2023); industry default in 2025-2026"
+    },
+    {
+      "name": "owenrumney/go-sarif (v3) — SARIF read/write library",
+      "why": "Pure-Go, MIT, the canonical Go SARIF library (used by tfsec/trivy ecosystem). Builds reports, supports v2.1.0 and v2.2, and has report.Validate() to catch schema issues before you ship. Lets strix produce schema-valid SARIF without hand-rolling JSON. Latest v3.3.0 (Oct 2024), still maintained.",
+      "license": "Apache-2.0/MIT (MIT per repo LICENSE)",
+      "free_local_no_api": "yes",
+      "integration": "go-lib: go get github.com/owenrumney/go-sarif/v3",
+      "language": "Go",
+      "maturity": "Mature, widely used in Go security tooling"
+    },
+    {
+      "name": "pandatix/go-cvss — CVSS v2/v3.0/v3.1/v4.0 scoring",
+      "why": "Pure-Go, MIT, listed among FIRST's official CVSS v4.0 implementations. Parses vectors, computes base/threat/environmental scores, and emits vector strings for all versions including v4.0 (gocvss40). Lets strix score findings deterministically and offline. RECOMMENDATION: emit BOTH a CVSS v3.1 and a v4.0 vector+score per finding — v4 is current but only ~26% of 2025 CVEs carry it, NVD keeps publishing v3.1, and clients/scanners still expect v3.1, so dual-scoring maximizes compatibility.",
+      "license": "MIT",
+      "free_local_no_api": "yes",
+      "integration": "go-lib: github.com/pandatix/go-cvss/40 (and /31)",
+      "language": "Go",
+      "maturity": "Actively maintained, FIRST-recognized impl"
+    },
+    {
+      "name": "Typst via varunbpatil/typst-go-wasm — embedded PDF engine (PRIMARY for single-binary)",
+      "why": "Embeds the Typst compiler (Rust) as a WASM module inside the Go binary via go:embed — NO external binary, NO cgo, NO network. Compile a Typst template + injected data (sys.inputs) straight to PDF in-process. This is the best fit for strix's 'single static binary, fully offline' vision: client-ready, beautifully typeset reports with zero install footprint. Tradeoffs: requires Go 1.25+, you must supply at least one font (bundle an OFL font), ~48MB RAM per compile, and the project is young (v0.x). Typst itself is Apache-2.0.",
+      "license": "MIT (lib) + Apache-2.0 (Typst) + OFL fonts",
+      "free_local_no_api": "yes",
+      "integration": "embed (WASM in-process): github.com/varunbpatil/typst-go-wasm",
+      "language": "Go wrapper over Rust/WASM",
+      "maturity": "Young (v0.x, 2025-2026) but functional; Typst upstream is mature and very actively developed"
+    },
+    {
+      "name": "Typst CLI (shell-out) — PDF engine alternative",
+      "why": "Mature, Apache-2.0, Rust single binary. Render Markdown->PDF (via Pandoc with Typst engine, ~27x faster than XeLaTeX) or author native .typ templates. Pick this over the WASM embed if you want the most stable/feature-complete Typst, accept shipping a second binary, and aren't strict about the single-static-binary goal. Pandoc (GPLv2) can convert strix's Markdown reports to PDF/DOCX/HTML using Typst or WeasyPrint as the engine.",
+      "license": "Apache-2.0 (Typst); Pandoc GPLv2; WeasyPrint BSD-3",
+      "free_local_no_api": "yes",
+      "integration": "shell-out CLI (typst compile / pandoc --pdf-engine=typst)",
+      "language": "Rust (Typst), Haskell (Pandoc)",
+      "maturity": "Mature and actively maintained in 2025-2026"
+    },
+    {
+      "name": "maroto/v2 — pure-Go PDF generation (fallback)",
+      "why": "MIT, actively maintained (release Dec 2025), Bootstrap-style grid layout over gofpdf with built-in text/images/QR/barcodes/page-breaks. Choose this if you want 100% Go with zero WASM/external engines and are willing to build report layout programmatically in Go instead of via templates. Tradeoffs vs Typst: less elegant typography, more verbose code for complex layouts, and it sits on the archived gofpdf (gofpdf itself is unmaintained since 2021, but maroto vendors/maintains its usage).",
+      "license": "MIT",
+      "free_local_no_api": "yes",
+      "integration": "go-lib: github.com/johnfercher/maroto/v2",
+      "language": "Go",
+      "maturity": "Actively maintained; built on archived gofpdf"
+    },
+    {
+      "name": "DefectDojo Community Edition — vuln-management integration target",
+      "why": "BSD-3-Clause, OWASP Flagship, free self-hosted CE (Docker/K8s) with native SARIF importer (scan_type=SARIF reads runs[].tool.driver.name), dedup, SLA tracking, and a REST API (/api/v2/import-scan, /reimport-scan). Best integration hub for strix: write SARIF, then POST it to DefectDojo for tracking/triage/correlation across engagements. Fully local/offline, no API keys to third parties (uses its own auth token). Pro/Sensei AI features are paid but unnecessary.",
+      "license": "BSD-3-Clause",
+      "free_local_no_api": "yes",
+      "integration": "HTTP/RPC: POST SARIF to /api/v2/import-scan (optional, operator-hosted)",
+      "language": "Python/Django",
+      "maturity": "Very mature, 45M+ downloads, 200+ parsers, OWASP flagship"
+    },
+    {
+      "name": "Dradis CE / Faraday CE — pentest-native report/management peers (alternatives)",
+      "why": "Dradis CE (GPLv2, Ruby) is the strongest at pentest report TEMPLATING and client deliverables and is self-hosted/free; Faraday CE (GPL-3.0, Python) excels at orchestrating/normalizing/deduplicating findings from 80+ tools. Either could serve as an export target or inspiration for strix's reporting UX. Tradeoffs: both are GPL (copyleft — keep them as separate processes you shell/HTTP to, not linked code), heavier to deploy, and overlap with strix's own reporting, so treat them as optional integrations rather than core deps. Prefer DefectDojo (permissive BSD) as the primary integration to avoid GPL entanglement.",
+      "license": "Dradis CE: GPLv2; Faraday CE: GPL-3.0",
+      "free_local_no_api": "yes",
+      "integration": "HTTP/RPC or file import (separate self-hosted service)",
+      "language": "Ruby (Dradis), Python (Faraday)",
+      "maturity": "Both mature and maintained in 2025-2026"
+    },
+    {
+      "name": "CycloneDX VEX — optional machine-readable exploitability/SBOM output",
+      "why": "OWASP CycloneDX (JSON/XML) with VEX lets strix communicate exploitability status (affected/not-affected/exploitable) in a machine-readable way, and pairs findings with SBOM context. Worth supporting as a secondary export if strix grows into dependency/supply-chain checks, since VEX is becoming standard for vuln-exchange. Not a primary deliverable format for a network/web pentest, so lower priority than SARIF.",
+      "license": "Apache-2.0 (CycloneDX spec/tooling)",
+      "free_local_no_api": "yes",
+      "integration": "go-lib (CycloneDX has a Go module) or emit JSON directly",
+      "language": "JSON/XML spec; Go lib available",
+      "maturity": "Mature OWASP standard, actively developed"
+    }
+  ],
+  "pitfalls": [
+    "SARIF is a STATIC-analysis format. Its data model centers on file artifactLocation + region (line/column); network/web pentest findings (host:port, URL, HTTP request/response, auth bypass) have no first-class home. You must map them via logicalLocations + result.properties property bags, which downstream tools may ignore. Keep a richer strix-native JSON as the source of truth and treat SARIF as a lossy export.",
+    "SARIF has no native CVSS field. Put the CVSS vector/score in result.properties (and/or rule.properties security-severity, which is what GitHub uses for severity gating). Different consumers read different property keys — test against your actual target (DefectDojo vs GitHub).",
+    "CVSS version fragmentation is real in 2025-2026: only ~26% of CVEs have v4 scores, NVD still publishes v3.1, and tools disagree on which is authoritative. Emitting only v4 will break compatibility with v3.1-only consumers; emit BOTH and label which is primary.",
+    "gofpdf is archived/unmaintained since 2021. maroto/v2 sits on top of it — fine today, but it is a long-term maintenance risk. Prefer Typst for anything where typography/maintainability matters.",
+    "typst-go-wasm is young (v0.x) and needs Go 1.25+, requires you to bundle a font (none embedded), and uses ~48MB RAM per concurrent compile. Validate it handles your full template (tables, page breaks, TOC) before committing; keep the typst-CLI shell-out path as a fallback.",
+    "GPL entanglement: Dradis (GPLv2) and Faraday (GPL-3.0) are copyleft. If strix ships as a permissively/closed-licensed single binary, do NOT link their code — integrate only via separate-process HTTP/file import. DefectDojo (BSD-3) avoids this problem.",
+    "Pandoc->PDF still needs a PDF engine (Typst, WeasyPrint, or LaTeX). 'Pandoc' alone won't make a PDF; pin the engine and its fonts so air-gapped builds are reproducible.",
+    "Client-ready PDFs need deterministic, reproducible output for audit integrity. Set Typst PDFOpts Ident/Timestamp explicitly (typst-go-wasm exposes these) so the same engagement data produces byte-stable PDFs."
+  ],
+  "open_questions": [
+    "Is strix's distribution goal a strict single static binary (favor embedded typst-go-wasm + go libs only) or is shipping a couple of bundled binaries acceptable (favor mature typst CLI / pandoc)?",
+    "Should PDF reports be templated (Typst/Markdown templates the operator can customize per client) or programmatically composed (maroto)? Templating is far better for client-branded deliverables.",
+    "Which integration hub does the target user run — DefectDojo, Faraday, Dradis, or none? This decides whether strix needs a push integration or just file export.",
+    "Adopt CVSS v4 as the displayed/primary score or keep v3.1 primary with v4 secondary, given v4's low 2025 adoption? Affects how the PDF presents severity.",
+    "Will strix expand into SBOM/dependency scanning? If yes, plan CycloneDX VEX output now; if it stays network/web/host pentest, SARIF + native JSON is sufficient.",
+    "Do clients require a specific report standard/compliance framing (PTES, OWASP, OSCP-style, or a regulator's template)? That dictates the Typst template structure and mandatory sections."
+  ],
+  "sources": [
+    {
+      "title": "SARIF v2.1.0 Plus Errata 01 (OASIS Standard)",
+      "url": "https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html"
+    },
+    {
+      "title": "SARIF v2.1.0 JSON schema (oasis-tcs/sarif-spec)",
+      "url": "https://github.com/oasis-tcs/sarif-spec/blob/main/sarif-2.1/schema/sarif-schema-2.1.0.json"
+    },
+    {
+      "title": "owenrumney/go-sarif — Go SARIF library",
+      "url": "https://github.com/owenrumney/go-sarif"
+    },
+    {
+      "title": "CVSS v4.0 Specification (FIRST.org)",
+      "url": "https://www.first.org/cvss/v4.0/"
+    },
+    {
+      "title": "NVD — CVSS v4.0 Official Support",
+      "url": "https://nvd.nist.gov/general/news/cvss-v4-0-official-support"
+    },
+    {
+      "title": "VulnCheck — Critical CVEs, CVSS v4, and the Adoption Gap (v4 ~26% of 2025 CVEs)",
+      "url": "https://www.vulncheck.com/blog/cvss-severity"
+    },
+    {
+      "title": "pandatix/go-cvss — CVSS v2/v3/v4 in Go",
+      "url": "https://github.com/pandatix/go-cvss"
+    },
+    {
+      "title": "DefectDojo SARIF parser docs",
+      "url": "https://docs.defectdojo.com/supported_tools/parsers/file/sarif/"
+    },
+    {
+      "title": "DefectDojo Review 2026 (BSD-3, OWASP flagship, CE features)",
+      "url": "https://appsecsanta.com/defectdojo"
+    },
+    {
+      "title": "DefectDojo (django-DefectDojo) GitHub",
+      "url": "https://github.com/defectdojo/django-defectdojo"
+    },
+    {
+      "title": "Faraday — Open Source Vulnerability Management Platform (GPL-3.0)",
+      "url": "https://github.com/infobyte/faraday"
+    },
+    {
+      "title": "Dradis Community Edition (GPLv2) GitHub",
+      "url": "https://github.com/dradis/dradis-ce"
+    },
+    {
+      "title": "Typst with Pandoc: fast XeLaTeX alternative (27x faster)",
+      "url": "https://slhck.info/software/2025/10/25/typst-pdf-generation-xelatex-alternative.html"
+    },
+    {
+      "title": "varunbpatil/typst-go-wasm — embedded Typst (WASM) for Go",
+      "url": "https://pkg.go.dev/github.com/varunbpatil/typst-go-wasm"
+    },
+    {
+      "title": "Typst Open Source (Apache-2.0)",
+      "url": "https://typst.app/open-source/"
+    },
+    {
+      "title": "maroto/v2 — pure-Go PDF library (MIT)",
+      "url": "https://pkg.go.dev/github.com/johnfercher/maroto/v2"
+    },
+    {
+      "title": "gofpdf — archived/unmaintained",
+      "url": "https://github.com/jung-kurt/gofpdf"
+    },
+    {
+      "title": "CycloneDX VEX — Vulnerability Exploitability eXchange",
+      "url": "https://cyclonedx.org/capabilities/vex/"
+    },
+    {
+      "title": "Sonar — The complete guide to SARIF (limitations of descriptions)",
+      "url": "https://www.sonarsource.com/resources/library/sarif/"
+    },
+    {
+      "title": "The Ultimate Guide to Pentest Reporting in 2025",
+      "url": "https://medium.com/@K3e9X/the-ultimate-guide-to-pentest-reporting-in-2025-what-you-need-to-know-69a84169ac85"
+    }
+  ]
+}

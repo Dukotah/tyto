@@ -4,14 +4,14 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/dukotah/strix/internal/engagement"
-	"github.com/dukotah/strix/internal/state"
+	"github.com/dukotah/tyto/internal/engagement"
+	"github.com/dukotah/tyto/internal/state"
 )
 
 // SystemPrompt is the planner's standing instructions.
 func SystemPrompt() string {
 	return strings.TrimSpace(`
-You are strix, an autonomous operator running a strictly authorized penetration test.
+You are tyto, an autonomous operator running a strictly authorized penetration test.
 Your job is to decide the next concrete actions, choosing an approach that fits the
 client's objectives, scope, and rules of engagement.
 

@@ -1,15 +1,15 @@
-# strix
+# tyto
 
 **An AI-orchestrated platform for _authorized_ penetration testing.**
 
-`strix` is a security-testing engine driven by a **local language model** that
+`tyto` is a security-testing engine driven by a **local language model** that
 plans, adapts, and reasons about an engagement the way a human operator
 would — choosing the approach based on *who hired you, what they own, and what
 they told you you're allowed to touch*. Everything the model proposes is forced
 through a deterministic **Scope Guard** that the model cannot override. The AI is
 the strategist; the guard is the law.
 
-> ⚠️ **strix is for authorized testing only.** It will refuse to act against any
+> ⚠️ **tyto is for authorized testing only.** It will refuse to act against any
 > target that is not explicitly in-scope for a loaded, acknowledged engagement.
 > Using it against systems you do not own or have written permission to test is
 > illegal. See [docs/ETHICS.md](docs/ETHICS.md).
@@ -18,9 +18,9 @@ the strategist; the guard is the law.
 
 ## Why this is different
 
-The incumbents are tools. `strix` is an **operator**.
+The incumbents are tools. `tyto` is an **operator**.
 
-| | Nmap / Nessus / Burp / Nuclei | strix |
+| | Nmap / Nessus / Burp / Nuclei | tyto |
 |---|---|---|
 | Decides *what* to do next | You do | Local model, per engagement context |
 | Adapts to findings mid-run | You do | Plan → act → observe → re-plan loop |
@@ -76,7 +76,7 @@ Every decision and action is written to an append-only **audit log**.
 | `internal/state` | Knowledge store: assets, findings, timeline |
 | `internal/report` | Findings → human report |
 | `internal/audit` | Append-only audit log of decisions & actions |
-| `cmd/strix` | CLI entrypoint |
+| `cmd/tyto` | CLI entrypoint |
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the deep dive and
 [docs/ROADMAP.md](docs/ROADMAP.md) for what's built vs. planned.
@@ -97,10 +97,10 @@ ollama pull llama3.1
 make build
 
 # 3. validate an engagement file (no actions taken)
-./bin/strix engagement validate configs/engagement.example.yaml
+./bin/tyto engagement validate configs/engagement.example.yaml
 
 # 4. dry-run: the planner proposes, the guard rules, nothing executes
-./bin/strix run --engagement configs/engagement.example.yaml --dry-run
+./bin/tyto run --engagement configs/engagement.example.yaml --dry-run
 ```
 
 ## License

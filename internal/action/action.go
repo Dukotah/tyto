@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dukotah/strix/internal/state"
+	"github.com/dukotah/tyto/internal/state"
 )
 
 // RiskLevel describes how intrusive an action is. The Scope Guard compares it

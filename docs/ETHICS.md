@@ -1,6 +1,6 @@
 # Ethics & legal use
 
-`strix` is a tool for **authorized** penetration testing and security research.
+`tyto` is a tool for **authorized** penetration testing and security research.
 
 ## The one rule
 
@@ -9,11 +9,11 @@
 Unauthorized access to computer systems is a crime in nearly every jurisdiction
 (e.g. the U.S. Computer Fraud and Abuse Act, the UK Computer Misuse Act, and
 equivalents worldwide). A tool does not make an action legal. *You* are
-responsible for every packet `strix` sends on your behalf.
+responsible for every packet `tyto` sends on your behalf.
 
-## How strix enforces this
+## How tyto enforces this
 
-`strix` is built so that authorization is structural, not advisory:
+`tyto` is built so that authorization is structural, not advisory:
 
 1. **No engagement, no action.** The engine will not run without a loaded
    engagement file that includes an authorization record (who approved the test,
@@ -29,10 +29,10 @@ truthfully and keep your signed scope agreement on file.
 
 ## Responsible disclosure
 
-If `strix` finds a vulnerability in third-party software during authorized
+If `tyto` finds a vulnerability in third-party software during authorized
 testing, follow coordinated disclosure: report it to the vendor and give them
 reasonable time to fix it before any public discussion.
 
-## Reporting misuse or vulnerabilities in strix itself
+## Reporting misuse or vulnerabilities in tyto itself
 
-See `SECURITY.md` (to be added) for how to report security issues in `strix`.
+See `SECURITY.md` (to be added) for how to report security issues in `tyto`.

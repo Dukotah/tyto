@@ -1,0 +1,126 @@
+{
+  "facet": "go-platform",
+  "summary": "Strix as a single static Go binary (CGO_ENABLED=0). Use spf13/cobra (alt urfave/cli/v3) for the CLI and the Charm stack (Bubble Tea v2, Lip Gloss, Bubbles, Huh, Glamour) for an interactive console and report, behind a strix console subcommand as a passive view, mirroring ProjectDiscovery Go tools but differentiated by the local-model brain and the deterministic in-process Scope Guard. Reject Go native plugin package (no Windows, CGO, exact host-toolchain version lock). Hybrid plugins: compiled-in Go first-party tools on tool.Tool; os/exec wrappers around OSS CLIs (nmap/nuclei/naabu, e.g. Ullaakut/nmap) with absolute paths and parsed XML/JSON, or nuclei embedded as a Go lib; hashicorp/go-plugin gRPC for isolated third-party Go extensions. Supporting: log/slog separate from the audit log, knadh/koanf config (lighter than viper), GoReleaser CGO_ENABLED=0 static binaries, optional go-co-op/gocron v2 scheduler, opt-in minio/selfupdate side-load.</summary>\n<pitfalls>[\"Go native plugin package disqualified: no Windows (strix target OS), requires CGO, no hot-reload, exact toolchain/build-tags/dependency version lock makes a distributable plugin ecosystem impossible.\", \"Shelling out breaks single-binary and adds privilege fragility (nmap dynamically linked; SYN/OS scans need root/CAP_NET_RAW/admin; binary may be absent). Use absolute paths in exec.Command (never bare PATH), verify version at startup, degrade gracefully.\", \"Never let the TUI or a plugin bypass the Scope Guard; the guard stays in-process and the sole gate, the TUI is a passive view, and go-plugin tools call back through the guard.\", \"Daemon/scheduler and self-update add network/persistence surface vs offline/air-gapped/no-API-key; keep both opt-in, no startup phone-home, re-pass every scheduled action through the guard and RoE time-window.\", \"Bubble Tea/Lip Gloss v2 changed import paths (v2 suffix, charm.land); pin versions and follow the Bubbles v1-to-v2 upgrade guide, do not half-migrate.\", \"Keep log/slog separate from the audit log; the audit JSONL is the load-bearing legal record and must stay append-only/tamper-evident.\", \"If a dependency forces CGO, cross-compilation breaks; keep strix code CGO-free and quarantine C deps behind a subprocess or go-plugin; use knadh/koanf over viper for lighter config.\", \"Check redistribution licensing before bundling: nmap is under the NPSL, unlike MIT nuclei/naabu; prefer detecting a user-installed nmap over shipping it.\"]",
+  "open_questions": [
+    "Primary interface: cobra CLI, Bubble Tea TUI, or both? Recommendation: CLI as the automatable core first, TUI behind strix console incrementally.",
+    "Should nmap/nuclei be operator-installed CLIs, bundled binaries, or nuclei embedded as a Go lib? Trades single-binary vs capability vs nmap NPSL.",
+    "Does strix need a long-running daemon/scheduler (then go-co-op/gocron v2) or is it per-engagement/one-shot? A daemon widens the authorization and offline surface.",
+    "Plugin author audience: core team only (skip go-plugin) or third parties (commit to a stable gRPC proto)?",
+    "Is any self-update desired given air-gapped (minio/selfupdate), or manual signature-verified side-loads only?",
+    "Confirm the minimum Go version (slog/nuclei 1.21+, Bubble Tea v2 floor) for reproducible static builds."
+  ],
+  "sources": [
+    {
+      "title": "charmbracelet/bubbletea",
+      "url": "https://github.com/charmbracelet/bubbletea"
+    },
+    {
+      "title": "bubbletea v2.0.0",
+      "url": "https://github.com/charmbracelet/bubbletea/releases/tag/v2.0.0"
+    },
+    {
+      "title": "charmbracelet/huh",
+      "url": "https://github.com/charmbracelet/huh"
+    },
+    {
+      "title": "spf13/cobra",
+      "url": "https://github.com/spf13/cobra"
+    },
+    {
+      "title": "urfave/cli v3",
+      "url": "https://pkg.go.dev/github.com/urfave/cli/v3"
+    },
+    {
+      "title": "hashicorp/go-plugin",
+      "url": "https://github.com/hashicorp/go-plugin"
+    },
+    {
+      "title": "Go plugin package",
+      "url": "https://pkg.go.dev/plugin"
+    },
+    {
+      "title": "Ullaakut/nmap",
+      "url": "https://github.com/Ullaakut/nmap"
+    },
+    {
+      "title": "projectdiscovery/nuclei",
+      "url": "https://github.com/projectdiscovery/nuclei"
+    },
+    {
+      "title": "knadh/koanf",
+      "url": "https://github.com/knadh/koanf"
+    },
+    {
+      "title": "log/slog",
+      "url": "https://pkg.go.dev/log/slog"
+    },
+    {
+      "title": "GoReleaser CGO",
+      "url": "https://goreleaser.com/cookbooks/cgo-and-crosscompiling/"
+    },
+    {
+      "title": "gocron v2",
+      "url": "https://pkg.go.dev/github.com/go-co-op/gocron/v2"
+    },
+    {
+      "title": "minio/selfupdate",
+      "url": "https://github.com/minio/selfupdate"
+    }
+  ],
+  "recommendations": [
+    {
+      "name": "spf13/cobra (CLI framework; alt urfave/cli/v3)",
+      "why": "Industry-standard nested-command CLI behind kubectl/gh/hugo; replaces the main.go os.Args switch to gain subcommands, completion, and global flags; easy to vibe-code one command at a time; very mature and actively released in 2025.",
+      "license": "Apache-2.0",
+      "free_local_no_api": "yes",
+      "integration": "go-lib (cobra.Command per subcommand in cmd/strix)",
+      "language": "Go",
+      "maturity": "Very mature, 40k+ stars"
+    },
+    {
+      "name": "Charm stack: Bubble Tea v2 + Lip Gloss + Bubbles + Huh + Glamour (TUI)",
+      "why": "Biggest lever for a polished full-system product: a Bubble Tea live console for the plan-guard-execute loop, Bubbles for findings/audit panes, Huh forms for scope setup, Glamour for the markdown report; v2 ships the faster renderer and is in production at NVIDIA/Microsoft/AWS/GitHub. Build incrementally behind strix console while keeping the cobra CLI as the stable automatable core; keep the TUI a passive view so engine/guard stay headless. Note v2 charm.land import paths.",
+      "license": "MIT",
+      "free_local_no_api": "yes",
+      "integration": "go-lib (internal/tui consuming engine events via channels)",
+      "language": "Go",
+      "maturity": "Very mature; v2.0.0"
+    },
+    {
+      "name": "hashicorp/go-plugin (third-party extension tier)",
+      "why": "For non-first-party tool plugins use go-plugin over gRPC: subprocess + RPC gives process isolation (a plugin panic cannot crash strix or bypass the in-process Scope Guard), a security boundary, and language-agnostic plugins; battle-tested in Vault/Terraform/Nomad. Tradeoff: per-call RPC latency and protobuf scaffolding, so reserve for true extensibility. tool.Tool maps cleanly to a gRPC contract; strongly preferred over Go native plugin.",
+      "license": "MPL-2.0",
+      "free_local_no_api": "yes",
+      "integration": "go-lib + subprocess/RPC (guard stays in-process, never delegated)",
+      "language": "Go host; plugins any gRPC language",
+      "maturity": "Very mature, battle-hardened"
+    },
+    {
+      "name": "os/exec wrappers for vendored OSS CLIs (nmap, nuclei, naabu)",
+      "why": "The most vibe-codable way to compete with Nmap/Nessus/ProjectDiscovery is to orchestrate them as tool.Tool adapters via os/exec with an explicit absolute binary path, parsing machine output (nmap -oX XML, nuclei/naabu -json); Ullaakut/nmap is a mature idiomatic Go wrapper and nuclei can alternatively embed as a Go library. Tradeoff: external binaries break the single-binary story and need privilege management (raw-socket scans need root/CAP_NET_RAW/admin), so detect-and-degrade when absent and gate every adapter through the Scope Guard.",
+      "license": "tool-dependent (nmap NPSL; nuclei/naabu MIT; Ullaakut/nmap MIT)",
+      "free_local_no_api": "yes",
+      "integration": "shell-out CLI (internal/tool/external) and/or embed nuclei Go lib",
+      "language": "Go adapters wrapping C/Go tools",
+      "maturity": "All mature, active 2025-2026"
+    },
+    {
+      "name": "knadh/koanf (config), log/slog (logging), GoReleaser (build) - supporting trio",
+      "why": "koanf: layered config (defaults/YAML/env/flags) with fewer deps and a smaller binary than viper. log/slog: stdlib structured logging kept separate from the tamper-evident audit log; never log secrets, attach engagement_id. GoReleaser: one config builds signed static binaries for all OS/arch with CGO_ENABLED=0 making cross-compile trivial and air-gapped-safe.",
+      "license": "koanf MIT; slog BSD stdlib; GoReleaser MIT",
+      "free_local_no_api": "yes",
+      "integration": "go-lib (internal/config; slog.Logger) + shell-out CLI (.goreleaser.yaml)",
+      "language": "Go",
+      "maturity": "All mature/standard (slog stdlib since 1.21)"
+    },
+    {
+      "name": "go-co-op/gocron v2 (optional scheduler), minio/selfupdate (optional updates)",
+      "why": "Defer-until-needed extras. gocron v2: in-process cron/interval scheduler for an optional strix daemon, active unlike robfig/cron; every tick must re-pass the guard and RoE time-window. minio/selfupdate: signed binary self-replace over HTTP with bsdiff; given air-gapped, opt-in only with no startup network call and a signature-verified manual side-load from removable media.",
+      "license": "gocron MIT; selfupdate Apache-2.0",
+      "free_local_no_api": "yes",
+      "integration": "go-lib (internal/daemon re-enters engine; strix update subcommand)",
+      "language": "Go",
+      "maturity": "Mature/active"
+    }
+  ]
+}

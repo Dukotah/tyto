@@ -1,6 +1,6 @@
 # Architecture
 
-`strix` is built around one idea: **separate strategy from authority.**
+`tyto` is built around one idea: **separate strategy from authority.**
 
 - The **Planner** (an AI) decides *what should happen next*.
 - The **Scope Guard** (deterministic code) decides *whether it's allowed*.

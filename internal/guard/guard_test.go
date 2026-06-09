@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dukotah/strix/internal/action"
-	"github.com/dukotah/strix/internal/engagement"
+	"github.com/dukotah/tyto/internal/action"
+	"github.com/dukotah/tyto/internal/engagement"
 )
 
 func testEngagement() *engagement.Engagement {

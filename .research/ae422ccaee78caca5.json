@@ -1,0 +1,206 @@
+{
+  "facet": "competition",
+  "summary": "The AI-pentest space splits into three camps: (1) closed cloud SaaS that is winning on raw results (XBOW — #1 on HackerOne, $120M Series C, Burp AI) but is expensive, online-only, and cloud-LLM-dependent; (2) open-source agentic frameworks that are cloud-LLM-first and only bolt on local models as an afterthought (PentestGPT, CAI, PentAGI, HexStrike-AI, usestrix/strix, Nebula); and (3) academic/minimalist research tools (HackingBuddyGPT, Shennina). Across the entire open-source field, NONE ships as a polished single-binary product that is local-first, free, no-API-key, AND has a deterministic non-AI scope enforcer — they default to OpenAI/Anthropic, are Python (pip/Docker installs, Kali assumptions), and treat scope/safety as soft prompt instructions or rely on Docker sandboxing rather than a hard-coded guard the model cannot bypass. CAI and PentAGI are the closest direct competitors (both support Ollama, MIT-ish licenses) but are heavy Python multi-agent stacks that still assume cloud for best quality and lack a true deterministic Scope Guard. Strix's defensible wedge is the combination almost no one has bundled: a single static Go binary that runs fully offline on the operator's laptop, with a hard-coded deterministic Scope Guard separated from the LLM brain, full audit trail, and zero API keys — the trust/compliance/air-gap niche the cloud leaders structurally cannot serve. CRITICAL: the name \"Strix\" already belongs to a popular Apache-2.0 cloud AI-pentest tool (usestrix/strix, PyPI strix-agent) released Aug 2025 — a rename or clear disambiguation is strongly advised.",
+  "recommendations": [
+    {
+      "name": "XBOW (competitor to study, not use)",
+      "why": "Market leader and the bar to benchmark against: autonomous web pentest, reached #1 on HackerOne in 2025, raised $120M Series C, launched Pentest-On-Demand (~$6k+) and a Microsoft Security Copilot/Sentinel integration in 2026. Its model: agents explore creatively but findings are only accepted after controlled exploitability validation (kills hallucinated findings). Tradeoff and the exact gap strix exploits: fully closed, cloud-only, expensive, cloud-LLM dependent, no air-gap/offline story, scope handled by their infra not by the operator. Study its validation-before-report design and adopt it locally.",
+      "license": "Proprietary/closed SaaS",
+      "free_local_no_api": "no",
+      "integration": "none — competitive reference only",
+      "language": "unknown (closed)",
+      "maturity": "Production, very well funded (Series C 2025/2026), top HackerOne rank; the dominant player"
+    },
+    {
+      "name": "CAI (Cybersecurity AI, aliasrobotics/CAI)",
+      "why": "The closest open-source peer and the one to beat on the local-first axis. Modular multi-agent framework, 300+ models incl. Ollama, built-in recon/exploit/privesc tools, and notably some guardrails (prompt-injection + dangerous-command defense). Can run offline no-key via CAI_LICENSE_OFF=1. Tradeoffs: Python 3.12+ (pip/Kali assumptions, not a single binary), dual AGPL-3.0/MIT with commercial use requiring an Alias license, 'in active development, don't expect it to work flawlessly,' best quality still leans on cloud models, and guardrails are soft (LLM/heuristic) not a deterministic hard-coded scope boundary. strix wins on: static Go binary, deterministic non-AI Scope Guard, simpler offline-by-default UX.",
+      "license": "AGPL-3.0 / MIT dual (commercial needs Alias license)",
+      "free_local_no_api": "yes",
+      "integration": "competitive reference; could shell-out or mine its tool list / agent patterns; do NOT vendor due to AGPL+commercial terms",
+      "language": "Python",
+      "maturity": "Popular (thousands of users, hundreds of orgs), actively developed, but self-described as not production-flawless"
+    },
+    {
+      "name": "PentAGI (vxcontrol/pentagi)",
+      "why": "Second-closest peer and notable because it is ALSO written in Go (79% Go / 20% TS) and MIT-licensed, with explicit air-gapped/Ollama support — proves a Go pentest orchestrator is viable. Multi-agent (orchestrator + researcher/developer/executor) running tools in sandboxed Docker (Kali image, nmap/Metasploit/sqlmap). Tradeoffs: heavy stack (Docker, Postgres, optional Neo4j/Graphiti knowledge graph that still needs an OpenAI key for entity extraction), 'long, complex setup with unclear docs,' cloud-first defaults, and safety relies on Docker isolation rather than a deterministic Scope Guard. strix wins on: single binary vs Docker-compose sprawl, hard Scope Guard, no-key-anywhere.",
+      "license": "MIT",
+      "free_local_no_api": "partial",
+      "integration": "strong architectural reference (Go multi-agent + sandboxed tool exec); can mirror its container-isolation idea for tool execution",
+      "language": "Go + TypeScript",
+      "maturity": "Active, MIT, gaining attention in 2026; setup complexity is the main complaint"
+    },
+    {
+      "name": "PentestGPT (GreyDGL/PentestGPT)",
+      "why": "The best-known academic-origin tool (arXiv 2308.06782), MIT, evolving from interactive assistant to autonomous agent (v2.0); reasoning/generation/parsing module design is worth borrowing. Multi-model incl. local Ollama. Tradeoffs: Python, 'limited/unclear documentation,' cloud-first (benchmarks/cost quoted in OpenAI $/run), no deterministic scope enforcement, and its headline 86.5% figure is on the XBOW CTF-style validation suite, not real-world engagements. strix wins on: offline-by-default, Scope Guard, packaged product.",
+      "license": "MIT",
+      "free_local_no_api": "partial",
+      "integration": "reference for the reasoning/generation/parsing split and prompt design; not a dependency",
+      "language": "Python",
+      "maturity": "Very well known, actively maintained, but more research-grade than product"
+    },
+    {
+      "name": "HexStrike-AI (0x4m4/hexstrike-ai)",
+      "why": "Important to understand because it's the opposite design philosophy: an MCP server that wraps 150+ existing CLI security tools and hands them to ANY LLM client (Claude/GPT/local Llama). MIT. Shows huge demand for 'LLM + real tools' orchestration — and its tool-wrapping catalog is a goldmine for which tools strix should integrate. Tradeoffs/cautions: not standalone (needs an external AI client), and it was abused in the wild to exploit Citrix zero-days (Check Point report), underscoring exactly why strix's deterministic Scope Guard + audit is a differentiator and a marketing/trust point. strix wins on: standalone brain+guard in one binary, authorized-use enforcement.",
+      "license": "MIT",
+      "free_local_no_api": "partial",
+      "integration": "mine its 150+ tool wrappers as the integration roadmap; optionally expose strix tools over MCP later",
+      "language": "Python",
+      "maturity": "Popular/viral in 2025-26, but flagged for real-world malicious abuse"
+    },
+    {
+      "name": "usestrix/strix (NAMING COLLISION — must address)",
+      "why": "Directly relevant for TWO reasons. (1) NAME CLASH: there is already a popular open-source 'Strix' — autonomous AI-pentest agents, Apache-2.0, released Aug 2025, PyPI package 'strix-agent', docs.strix.ai, marketed at 'vibe coders.' Your project shares its name, category, AND target audience; rename or strongly disambiguate before any public release to avoid trademark/SEO/confusion problems. (2) COMPETITOR: it runs code dynamically, validates findings with real PoCs, has HTTP proxy + headless browser + terminal + Python sandbox, integrates with CI/GitHub Actions. Tradeoff vs yours: cloud-LLM-first, Python, no local-first/no-key/air-gap story, no deterministic scope guard. Your wedge holds — but the name does not.",
+      "license": "Apache-2.0",
+      "free_local_no_api": "no",
+      "integration": "competitive reference only; the key action item is naming",
+      "language": "Python",
+      "maturity": "Active, well-marketed, on Product Hunt; strong web-app PoC validation"
+    },
+    {
+      "name": "HackingBuddyGPT (ipa-lab/hackingBuddyGPT)",
+      "why": "Minimalist academic tool (TU Wien) — 'LLM hacking in <50 lines,' use-case agents (Linux privesc, web/API). Valuable as a clean reference for agent loop design and as honest evidence of local-model weakness: in their published benchmark, local Llama3 solved only 0-33% of privesc VMs vs GPT-4-Turbo's 33-83% and humans ~75%. This is the single most important caveat for strix: a fully-local model is materially weaker, so strix must compensate with strong deterministic tooling, a curated knowledge base/RAG of CVEs and TTPs, and tight tool orchestration rather than relying on raw model reasoning.",
+      "license": "MIT (open source)",
+      "free_local_no_api": "yes",
+      "integration": "reference for the minimal agent loop and for building a local privesc benchmark",
+      "language": "Python",
+      "maturity": "Academic, peer-reviewed (FSE'23, EMSE 2025), maintained but research-scope"
+    },
+    {
+      "name": "AIDA (Vasco0x4/AIDA)",
+      "why": "Closest philosophical twin to strix's pitch: 'Turn any LLM into an autonomous pentester. You define the scope, the agent does the work, you review the findings.' Confirms there is appetite for an operator-defines-scope model — but (per current info) scope is still a soft definition handed to the LLM, not a deterministic guard. strix's wedge is making that scope a hard-coded, model-unbypassable enforcer with an audit trail. Worth tracking closely for feature overlap.",
+      "license": "open source (verify on repo)",
+      "free_local_no_api": "partial",
+      "integration": "competitive reference; validates the 'operator defines scope' UX",
+      "language": "Python",
+      "maturity": "Smaller/newer project; verify activity before relying on findings"
+    },
+    {
+      "name": "Nebula (berylliumsec/nebula) & Shennina (mazen160/shennina)",
+      "why": "Lower-tier references. Nebula (BSD-2-Clause, Python) is an AI terminal ASSISTANT — interprets scan output and suggests next steps, self-hosted LLM support, but explicitly NOT autonomous; shows the 'co-pilot' UX strix could offer as an interactive mode. Shennina (Mazin Ahmed, 2019-era, Metasploit+Nmap+RL exploit recommender, 40+ MITRE TTPs) predates the LLM wave and is largely unmaintained — useful as proof that AI-driven exploit selection is an old idea, and that its abandonment leaves room for a maintained modern equivalent. Both lack any deterministic scope enforcement.",
+      "license": "Nebula BSD-2-Clause; Shennina open source (older)",
+      "free_local_no_api": "partial",
+      "integration": "Nebula = UX reference for interactive co-pilot mode; Shennina = historical reference for AI exploit selection",
+      "language": "Python",
+      "maturity": "Nebula maintained but assistant-only; Shennina largely dormant"
+    }
+  ],
+  "pitfalls": [
+    "NAME COLLISION: 'Strix' is already a popular Apache-2.0 open-source AI-pentest tool (usestrix/strix, PyPI strix-agent, docs.strix.ai, Aug 2025) in the SAME category targeting the SAME 'vibe coder' audience. Shipping under this name risks trademark conflict, SEO invisibility, and direct user confusion. Decide on a rename or clear disambiguation early.",
+    "Local-model quality gap is real and measurable: published HackingBuddyGPT results show local Llama3 solving only 0-33% of Linux privesc challenges vs ~75% for humans and 33-83% for GPT-4-Turbo. A fully-local, no-cloud brain will be the WEAKEST reasoning component unless strix compensates with strong deterministic tooling, curated CVE/TTP knowledge (RAG), and tight orchestration. Do not over-promise autonomous parity with XBOW/cloud tools.",
+    "'Scope Guard' is a genuine differentiator ONLY if it is truly deterministic and model-unbypassable. Competitors (CAI guardrails, PentAGI/PentestAgent control-plane separation, Aikido layered guards) already market 'guardrails' — but most are soft LLM/heuristic checks or Docker sandboxing. The defensible claim is a hard-coded, non-AI allow/deny enforcer + audit; protect that distinction clearly or the wedge blurs into 'yet another tool with guardrails.'",
+    "Most OSS competitors are Python with pip/Docker/Kali assumptions; strix's Go single-static-binary, runs-anywhere, no-runtime-deps story is a real UX advantage — but only if you resist pulling in heavyweight Python tools that re-introduce the install pain. Prefer shelling out to Go-native or static binaries (nmap, nuclei, etc.) over embedding Python stacks.",
+    "Autonomous pentest agents are documented to drift scope, hallucinate target IPs, and modify/destroy host files; HexStrike-AI was abused in the wild to exploit Citrix zero-days. This is both a risk to manage (sandbox tool execution, like PentAGI) AND a trust/marketing asset — strix's audit + deterministic guard directly answer the #1 fear blocking autonomous-pentest adoption.",
+    "'Validate findings with a real PoC before reporting' is the design choice that gave XBOW credibility and kills hallucinated findings; nearly all serious players (XBOW, usestrix/strix) do this. A local tool that reports unverified, LLM-imagined vulns will lose trust instantly — bake exploit/exploitability validation into the engine, not just the LLM's say-so.",
+    "The space is moving extremely fast (XBOW Microsoft deal Mar 2026; new OSS tools and arXiv frameworks monthly). Several competitor specifics (AIDA scope model, exact license terms, maintenance status) should be re-verified at build time rather than treated as fixed."
+  ],
+  "open_questions": [
+    "Will you rename the project to avoid the usestrix/strix collision, or proceed and disambiguate (e.g., a distinct binary name + tagline)? This affects branding, repo, and PyPI/registry choices now.",
+    "What is the honest positioning given the local-model quality gap — fully-autonomous (competing head-on with XBOW/CAI, where local models underperform) vs. operator-in-the-loop co-pilot with hard scope enforcement (a more defensible, trust-first niche)? The wedge points strongly to the latter.",
+    "Which local model(s) are the target brain (e.g., Qwen2.5/3-Coder, Llama 3.x, a security-tuned model), and what minimum hardware are you designing for? This determines how much you must lean on deterministic tooling + RAG vs raw reasoning.",
+    "Do you adopt PentAGI-style sandboxed (Docker/container) tool execution for safety, or keep a pure single-binary host-execution model? The single-binary vision and the safety-sandbox best practice are in tension — needs a deliberate decision.",
+    "Will strix vendor/shell-out to existing tool catalogs (mine HexStrike's 150+ wrappers, PentAGI's toolset) or build a curated Go-native tool set? Affects scope, license hygiene (avoid AGPL entanglement from CAI), and the single-binary goal.",
+    "Should strix expose its capabilities over MCP (like HexStrike) so other LLM clients can drive it, in addition to its built-in local brain? Could broaden adoption but dilutes the 'self-contained product' story."
+  ],
+  "sources": [
+    {
+      "title": "PentestGPT (GreyDGL) — GitHub",
+      "url": "https://github.com/GreyDGL/PentestGPT"
+    },
+    {
+      "title": "PentestGPT: An LLM-empowered Automatic Penetration Testing Tool (arXiv 2308.06782)",
+      "url": "https://arxiv.org/abs/2308.06782"
+    },
+    {
+      "title": "XBOW — Autonomous Offensive Security Platform",
+      "url": "https://xbow.com/"
+    },
+    {
+      "title": "Announcing XBOW Pentest On-Demand (BusinessWire, Nov 2025)",
+      "url": "https://www.businesswire.com/news/home/20251112470912/en/Announcing-XBOW-Pentest-On-Demand-for-Security-at-Machine-Speed"
+    },
+    {
+      "title": "Xbow Raises $120M Series C to Scale Autonomous AI Hacking",
+      "url": "https://www.bankinfosecurity.com/xbow-raises-120m-series-c-to-scale-autonomous-ai-hacking-a-31088"
+    },
+    {
+      "title": "XBOW + Microsoft Security Copilot/Sentinel integration (BusinessWire, Mar 2026)",
+      "url": "https://www.businesswire.com/news/home/20260323693144/en/XBOW-Embeds-Continuous-AI-Driven-Penetration-Testing-in-the-Microsoft-Security-Ecosystem"
+    },
+    {
+      "title": "HexStrike-AI — GitHub (0x4m4)",
+      "url": "https://github.com/0x4m4/hexstrike-ai"
+    },
+    {
+      "title": "Hexstrike-AI: When LLMs Meet Zero-Day Exploitation (Check Point)",
+      "url": "https://blog.checkpoint.com/executive-insights/hexstrike-ai-when-llms-meet-zero-day-exploitation/"
+    },
+    {
+      "title": "CAI (Cybersecurity AI) — GitHub (aliasrobotics)",
+      "url": "https://github.com/aliasrobotics/CAI"
+    },
+    {
+      "title": "Cybersecurity AI (CAI): Open-source framework — Help Net Security",
+      "url": "https://www.helpnetsecurity.com/2025/09/22/cybersecurity-ai-cai-open-source-framework-ai-security/"
+    },
+    {
+      "title": "PentAGI — GitHub (vxcontrol)",
+      "url": "https://github.com/vxcontrol/pentagi"
+    },
+    {
+      "title": "PentAGI: Open-source autonomous AI penetration testing system — Help Net Security",
+      "url": "https://www.helpnetsecurity.com/2026/04/22/pentagi-autonomous-ai-penetration-testing/"
+    },
+    {
+      "title": "HackingBuddyGPT — GitHub (ipa-lab)",
+      "url": "https://github.com/ipa-lab/hackingBuddyGPT"
+    },
+    {
+      "title": "LLMs as Hackers: Autonomous Linux Privilege Escalation Attacks (Empirical Software Engineering, 2025)",
+      "url": "https://link.springer.com/article/10.1007/s10664-025-10758-3"
+    },
+    {
+      "title": "Nebula — GitHub (berylliumsec)",
+      "url": "https://github.com/berylliumsec/nebula"
+    },
+    {
+      "title": "Shennina: Automating Host Exploitation with AI — GitHub (mazen160)",
+      "url": "https://github.com/mazen160/shennina"
+    },
+    {
+      "title": "Burp AI — PortSwigger (capabilities + local-model stance)",
+      "url": "https://portswigger.net/burp/ai"
+    },
+    {
+      "title": "BurpGPT Pro (local/self-hosted endpoint support)",
+      "url": "https://burpgpt.app/"
+    },
+    {
+      "title": "garak — the LLM vulnerability scanner (NVIDIA)",
+      "url": "https://github.com/NVIDIA/garak/"
+    },
+    {
+      "title": "usestrix/strix — Open-source AI hackers (NAME COLLISION)",
+      "url": "https://github.com/usestrix/strix"
+    },
+    {
+      "title": "Strix: Open-source AI agents for penetration testing — Help Net Security",
+      "url": "https://www.helpnetsecurity.com/2025/11/17/strix-open-source-ai-agents-penetration-testing/"
+    },
+    {
+      "title": "AIDA — Turn any LLM into an autonomous pentester (you define the scope)",
+      "url": "https://github.com/Vasco0x4/AIDA"
+    },
+    {
+      "title": "How Aikido Secures AI Pentesting Agents and Prevents Scope Drift",
+      "url": "https://www.aikido.dev/blog/ai-pentesting-agent-security"
+    },
+    {
+      "title": "8 Open-Source AI Pentest Tools for Security Teams in 2026 — Ostorlab",
+      "url": "https://blog.ostorlab.co/8-open-source-ai-pentest-tools-2026.html"
+    },
+    {
+      "title": "What Makes a Good LLM Agent for Real-world Penetration Testing? (arXiv 2602.17622)",
+      "url": "https://arxiv.org/html/2602.17622v1"
+    }
+  ]
+}

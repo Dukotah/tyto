@@ -10,10 +10,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/dukotah/strix/internal/action"
-	"github.com/dukotah/strix/internal/engagement"
-	"github.com/dukotah/strix/internal/planner/llm"
-	"github.com/dukotah/strix/internal/state"
+	"github.com/dukotah/tyto/internal/action"
+	"github.com/dukotah/tyto/internal/engagement"
+	"github.com/dukotah/tyto/internal/planner/llm"
+	"github.com/dukotah/tyto/internal/state"
 )
 
 // Planner produces actions from engagement context using an LLM backend.

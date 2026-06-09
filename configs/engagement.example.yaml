@@ -1,6 +1,6 @@
 # Example engagement definition.
 #
-# This is the contract with your client, expressed as data. strix will not run
+# This is the contract with your client, expressed as data. tyto will not run
 # without a valid engagement that includes an authorization record.
 #
 # Copy this to e.g. acme.engagement.yaml (git-ignored) and fill it in for real.
@@ -15,7 +15,7 @@ objectives:
   - Assess the public web application for OWASP Top 10 issues.
   - Determine whether an external attacker can reach internal assets.
 
-# WHO authorized this and HOW. Required — strix refuses to run without it.
+# WHO authorized this and HOW. Required — tyto refuses to run without it.
 authorization:
   authorized_by: Jane Doe, CISO, Acme Corp
   authorized_on: 2026-06-01

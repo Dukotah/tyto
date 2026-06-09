@@ -1,0 +1,198 @@
+{
+  "facet": "local-runtimes",
+  "summary": "For strix's \"local model as brain\" architecture, the choice is really between Ollama and llama.cpp's own server, with vLLM as the high-end GPU option. Ollama is the best default: it is MIT-licensed, fully local/offline, needs no API key, ships an official typed Go client (github.com/ollama/ollama/api), and is itself a Go server wrapping llama.cpp. It supports OpenAI-style tool/function calling AND structured outputs, where a supplied JSON schema is compiled to a GBNF grammar and enforced token-by-token by llama.cpp's sampler — exactly the \"the model cannot emit invalid tool calls\" guarantee strix wants behind its deterministic Scope Guard. It runs CPU-only or GPU, uses GGUF, has tiny operational overhead (single daemon, simple model pull), and is the most \"vibe-coding-friendly\" to drive incrementally. llama.cpp/server is the power-user alternative giving direct GBNF and the latest tool-calling features (drive it over its OpenAI-compatible HTTP API with --jinja); it can even be embedded/static-linked if strix later wants a true single binary. vLLM is the choice only when a GPU server is available and high throughput matters (best-in-class guided decoding via xgrammar/outlines, but Python/heavy, not a fit for an air-gapped laptop). LM Studio is excellent UX and now free for commercial use, but it is proprietary/closed-source — acceptable as an operator-chosen backend over its OpenAI-compatible endpoint, but not something to bundle or depend on. llamafile (single-file, Apache/MIT, great for distributing a preloaded model) and KoboldCpp (GGUF, GBNF, OpenAI structured outputs) are solid secondary OSS options; GPT4All and text-generation-webui are usable via OpenAI-compatible endpoints but offer no advantage over Ollama/llama.cpp for agentic Go integration. Crucially, all OSS options here speak an OpenAI-compatible HTTP API, so strix should code to that interface and treat the runtime as swappable, defaulting to Ollama.",
+  "recommendations": [
+    {
+      "name": "Ollama",
+      "why": "Best default for strix. MIT-licensed Go server that wraps llama.cpp; offers an OFFICIAL, fully-typed Go client (github.com/ollama/ollama/api) with native ToolCalls support, plus an OpenAI-compatible /v1 endpoint. Supports tool/function calling and structured outputs: a JSON schema you pass is compiled into a GBNF grammar and grammar-constrained at the sampler, so invalid tool-call JSON is impossible at the token level — ideal upstream of the deterministic Scope Guard. CPU-only or GPU, GGUF models, trivial model management (ollama pull/run), single daemon. Lowest friction to vibe-code against. Tradeoff: thin abstraction means latest llama.cpp tool-calling/template tweaks land slightly later, and you depend on a background daemon rather than an in-process library.",
+      "license": "MIT",
+      "free_local_no_api": "yes",
+      "integration": "go-lib (official github.com/ollama/ollama/api) + HTTP/RPC (native /api and OpenAI-compatible /v1); strix already uses it",
+      "language": "Go (wraps C/C++ llama.cpp)",
+      "maturity": "Very mature, dominant local-LLM runtime in 2025-2026, extremely active"
+    },
+    {
+      "name": "llama.cpp (+ server, llama-server)",
+      "why": "Power-user alternative and the engine under Ollama/llamafile/Kobold/LM Studio. MIT. Direct, first-class GBNF grammar + JSON-schema constrained decoding and the most up-to-date tool-calling: OpenAI-compatible /v1/chat/completions with `tools` when launched with --jinja, native templates for Llama 3.x, Qwen2.5/3, Hermes, Mistral-Nemo, Functionary, plus a generic fallback. Inspect /props for chat_template_tool_use to confirm a model supports tools. CPU/GPU, GGUF. Can be static-linked/embedded if strix later wants one binary. Tradeoffs: you manage the binary/model/templates yourself (no official Go client — drive via HTTP), generic templates are token-heavy, and aggressive KV-cache quant (e.g. q4_0) degrades tool-calling.",
+      "license": "MIT",
+      "free_local_no_api": "yes",
+      "integration": "shell-out CLI (launch llama-server) + HTTP (OpenAI-compatible /v1); optional embed/cgo for single static binary",
+      "language": "C/C++",
+      "maturity": "Extremely mature and the most actively developed local inference engine"
+    },
+    {
+      "name": "vLLM",
+      "why": "High-throughput GPU alternative for when an operator has a real GPU box and wants batched/concurrent inference (e.g. parallel recon agents). Best-in-class structured output: guided_json/guided_regex/guided_choice/guided_grammar via xgrammar, outlines, or lm-format-enforcer (auto-selected), plus OpenAI-compatible tool calling. Apache-2.0, fully local, no API key. Tradeoffs: Python, heavy GPU/VRAM requirements, non-trivial to deploy, and a poor fit for an air-gapped single-laptop/CPU operator — overkill for strix's default profile.",
+      "license": "Apache-2.0",
+      "free_local_no_api": "yes",
+      "integration": "HTTP (OpenAI-compatible server) — strix shells out to / connects to it",
+      "language": "Python (CUDA kernels)",
+      "maturity": "Mature, production-grade, very active; the standard for self-hosted GPU serving"
+    },
+    {
+      "name": "llamafile",
+      "why": "Best option for distributing a preloaded model as one self-contained artifact (Cosmopolitan Libc -> single cross-platform executable bundling weights+engine+server). OSS (Apache-2.0 project incl. llama.cpp MIT), runs offline, OpenAI-compatible /v1 in server mode, GGUF, CPU-first. Great if strix wants a 'download one file, get the brain' onboarding. Tradeoffs: tracks llama.cpp slightly behind; tool-calling/grammar feature parity depends on the bundled llama.cpp version; less convenient for swapping many models than Ollama.",
+      "license": "Apache-2.0 (project) / MIT (llama.cpp core)",
+      "free_local_no_api": "yes",
+      "integration": "shell-out CLI (run the .llamafile in --server mode) + HTTP OpenAI-compatible /v1",
+      "language": "C/C++ + Cosmopolitan Libc",
+      "maturity": "Maintained by Mozilla.ai; active but smaller cadence than llama.cpp/Ollama"
+    },
+    {
+      "name": "KoboldCpp",
+      "why": "Solid single-binary OSS alternative (AGPL). One file, zero install, GGUF, CPU/GPU. Supports GBNF grammar sampling and added OpenAI Structured Outputs in its /v1 chat completions (accepts a JSON schema, including via the `grammar` field). Good fallback runtime an operator may already use. Tradeoffs: AGPL-3.0 is copyleft — fine for shelling out to a separate process over HTTP, but do NOT link/embed it into strix's binary; its tool-calling story is less standardized than llama.cpp/Ollama.",
+      "license": "AGPL-3.0",
+      "free_local_no_api": "yes",
+      "integration": "shell-out CLI + HTTP OpenAI-compatible /v1 (keep as a separate process to respect AGPL)",
+      "language": "C/C++ (Python launcher)",
+      "maturity": "Mature, actively maintained, popular in local/hobbyist scene"
+    },
+    {
+      "name": "LM Studio",
+      "why": "Best polished desktop UX and now free for personal AND commercial use; OpenAI-compatible /v1 (and /v1/responses) with tool calling and JSON-schema structured output, GGUF + MLX, CPU/GPU. Reasonable as an operator-selected backend strix talks to over HTTP. Tradeoff (important): PROPRIETARY / closed-source. It violates the spirit of strix being a free OSS stack if bundled or hard-depended-on; treat strictly as an optional, user-supplied endpoint, never a default or embedded component.",
+      "license": "Proprietary (free for personal + commercial; CLI `lms` is MIT)",
+      "free_local_no_api": "partial",
+      "integration": "HTTP only (OpenAI-compatible /v1) — optional operator-chosen backend, do not bundle",
+      "language": "Closed (Electron UI; llama.cpp/MLX engines)",
+      "maturity": "Mature, very popular, actively released through 2025-2026"
+    },
+    {
+      "name": "GPT4All",
+      "why": "Easy desktop app with a localhost OpenAI-compatible server (port 4891), Apache-2.0, GGUF, CPU-friendly, commercial-use OK. Workable as a swappable backend. Tradeoffs: implements only a SUBSET of the OpenAI API, weaker/less-documented tool-calling and grammar story than Ollama/llama.cpp, localhost-only by design — no real advantage for strix's agentic loop, so list as a minor alternative.",
+      "license": "MIT (app) / Apache-2.0 components",
+      "free_local_no_api": "yes",
+      "integration": "HTTP (partial OpenAI-compatible /v1 on localhost:4891)",
+      "language": "C++/Qt (Python/TS bindings)",
+      "maturity": "Maintained by Nomic; active but less central for agentic use in 2026"
+    },
+    {
+      "name": "text-generation-webui (oobabooga)",
+      "why": "Flexible multi-backend UI with an OpenAI/Anthropic-compatible API including tool-calling and SSE streaming; AGPL-3.0, fully local, supports GGUF (via llama.cpp loader) and other formats. Usable if an operator already runs it. Tradeoffs: heavier Python stack, AGPL copyleft (run as separate process only), and offers nothing strix needs beyond what Ollama/llama.cpp provide more simply — keep as a last-resort alternative.",
+      "license": "AGPL-3.0",
+      "free_local_no_api": "yes",
+      "integration": "shell-out / separate process + HTTP OpenAI-compatible API (respect AGPL)",
+      "language": "Python",
+      "maturity": "Actively maintained into 2026, but niche for headless agentic Go use"
+    }
+  ],
+  "pitfalls": [
+    "Tool-calling reliability depends heavily on the MODEL + its chat template, not just the runtime. Use a model with a native tool-use template (Qwen2.5/Qwen3, Llama 3.1/3.3, Hermes 3, Functionary, Mistral-Nemo). Generic/fallback templates consume more tokens and are less reliable.",
+    "Structured-output (JSON-schema/GBNF) constraint and tool-call constraint are different paths: schema-based structured output is grammar-enforced at the sampler (cannot produce invalid JSON), but OpenAI-style `tools` calls inject the schema into the prompt and are NOT always fully grammar-constrained — validate/parse tool-call args defensively in Go and reject on parse failure (strix's Scope Guard must never trust model output structurally).",
+    "Aggressive KV-cache quantization (e.g. -ctk q4_0) in llama.cpp can substantially DEGRADE tool-calling quality — keep KV cache at higher precision for the planning model.",
+    "llama.cpp server needs --jinja for OpenAI tool calling; without the right template flags, `tools` requests silently fall back or fail. Check /props (chat_template_tool_use) to confirm support per model.",
+    "License traps for a bundled OSS product: LM Studio is PROPRIETARY (never embed/bundle); KoboldCpp and text-generation-webui are AGPL-3.0 (only safe via separate-process HTTP, never linked into strix's binary). Ollama (MIT), llama.cpp (MIT), llamafile (Apache/MIT), vLLM (Apache-2.0), GPT4All (MIT/Apache) are safe to depend on.",
+    "Ollama tracks llama.cpp with a lag, so brand-new tool-calling/template fixes (and some new model formats) may land in llama.cpp/server first — if a specific 2026 model's tool calling is broken in Ollama, llama-server is the escape hatch.",
+    "Don't hard-couple strix to one runtime's native API. Every OSS option here exposes an OpenAI-compatible /v1 endpoint; code to that interface (with the official Ollama Go client as the optimized default path) so operators can swap runtimes.",
+    "CPU-only inference of a capable agentic model (7B-30B) is slow; manage operator expectations or recommend small fast models (e.g. Qwen3/Hermes 3 8B at Q4_K_M) for laptop/air-gapped use, larger MoE models (Qwen3-Coder-30B-A3B) where RAM/VRAM allows."
+  ],
+  "open_questions": [
+    "Default deployment profile: is strix's primary target a CPU-only/air-gapped laptop (favors Ollama or a bundled llamafile) or an operator with a GPU (could optionally support vLLM for parallel agents)?",
+    "Single-binary vision vs. daemon dependency: does strix want to embed/static-link an engine (llama.cpp via cgo, or bundle a llamafile) for true single-binary distribution, or is requiring the operator to run Ollama acceptable?",
+    "Should strix abstract behind the OpenAI-compatible /v1 interface for runtime-swappability, while keeping the native Ollama Go client as the optimized default? (Recommended yes.)",
+    "Which default model ships/recommended with strix, and at what quant — this drives tool-calling reliability more than the runtime choice (e.g. Qwen3 / Hermes 3 8B vs Qwen3-Coder-30B-A3B MoE)?",
+    "Is shelling out to AGPL tools (KoboldCpp/oobabooga) as optional operator-provided backends acceptable to the project's licensing posture, given they'd be separate processes (not linked)?",
+    "Does strix need batched/concurrent inference for many simultaneous agents (which would justify a vLLM backend path), or is a single sequential planning loop sufficient?"
+  ],
+  "sources": [
+    {
+      "title": "Ollama — Tool calling (docs)",
+      "url": "https://docs.ollama.com/capabilities/tool-calling"
+    },
+    {
+      "title": "Ollama — Structured outputs (docs)",
+      "url": "https://docs.ollama.com/capabilities/structured-outputs"
+    },
+    {
+      "title": "Ollama Blog — Structured outputs",
+      "url": "https://ollama.com/blog/structured-outputs"
+    },
+    {
+      "title": "How Does Ollama's Structured Outputs Work? (JSON schema -> GBNF via llama.cpp)",
+      "url": "https://blog.danielclayton.co.uk/posts/ollama-structured-outputs/"
+    },
+    {
+      "title": "Official Ollama Go client — github.com/ollama/ollama/api",
+      "url": "https://pkg.go.dev/github.com/ollama/ollama/api"
+    },
+    {
+      "title": "How to Implement LLM Tool-calling with Go and Ollama",
+      "url": "https://dev.to/calvinmclean/how-to-implement-llm-tool-calling-with-go-and-ollama-237g"
+    },
+    {
+      "title": "llama.cpp — Function calling docs",
+      "url": "https://github.com/ggml-org/llama.cpp/blob/master/docs/function-calling.md"
+    },
+    {
+      "title": "llama.cpp — server README",
+      "url": "https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md"
+    },
+    {
+      "title": "llama.cpp — GBNF grammars README",
+      "url": "https://github.com/ggml-org/llama.cpp/blob/master/grammars/README.md"
+    },
+    {
+      "title": "vLLM — Structured Outputs (guided_json/regex/choice/grammar; xgrammar/outlines)",
+      "url": "https://docs.vllm.ai/en/v0.9.2/features/structured_outputs.html"
+    },
+    {
+      "title": "vLLM — Tool Calling",
+      "url": "https://docs.vllm.ai/en/v0.8.4/features/tool_calling.html"
+    },
+    {
+      "title": "Structured outputs in vLLM (Red Hat Developer)",
+      "url": "https://developers.redhat.com/articles/2025/06/03/structured-outputs-vllm-guiding-ai-responses"
+    },
+    {
+      "title": "LM Studio — Tool Use (OpenAI-compatible)",
+      "url": "https://lmstudio.ai/docs/developer/openai-compat/tools"
+    },
+    {
+      "title": "LM Studio — Structured Output",
+      "url": "https://lmstudio.ai/docs/developer/openai-compat/structured-output"
+    },
+    {
+      "title": "LM Studio is free for use at work (licensing)",
+      "url": "https://lmstudio.ai/blog/free-for-work"
+    },
+    {
+      "title": "lms CLI LICENSE (MIT)",
+      "url": "https://github.com/lmstudio-ai/lms/blob/main/LICENSE"
+    },
+    {
+      "title": "llamafile — GitHub (mozilla-ai)",
+      "url": "https://github.com/mozilla-ai/llamafile"
+    },
+    {
+      "title": "llamafile — Quickstart (server / OpenAI API)",
+      "url": "https://mozilla-ai.github.io/llamafile/quickstart/"
+    },
+    {
+      "title": "KoboldCpp — GitHub (GGUF, GBNF, OpenAI structured outputs)",
+      "url": "https://github.com/LostRuins/koboldcpp/"
+    },
+    {
+      "title": "KoboldCpp — Wiki (grammar sampling, /v1 API)",
+      "url": "https://github.com/LostRuins/koboldcpp/wiki"
+    },
+    {
+      "title": "GPT4All — Local API Server (subset of OpenAI API)",
+      "url": "https://docs.gpt4all.io/gpt4all_api_server/home.html"
+    },
+    {
+      "title": "text-generation-webui — GitHub (OpenAI/Anthropic-compatible API, tool-calling, AGPL)",
+      "url": "https://github.com/oobabooga/text-generation-webui"
+    },
+    {
+      "title": "text-generation-webui — OpenAI API wiki",
+      "url": "https://github.com/oobabooga/text-generation-webui/wiki/12-%E2%80%90-OpenAI-API"
+    },
+    {
+      "title": "Best Open-Source LLMs 2026 (agentic/coding/local models)",
+      "url": "https://huggingface.co/blog/daya-shankar/open-source-llms"
+    },
+    {
+      "title": "Qwen — Function Calling docs",
+      "url": "https://qwen.readthedocs.io/en/latest/framework/function_call.html"
+    }
+  ]
+}

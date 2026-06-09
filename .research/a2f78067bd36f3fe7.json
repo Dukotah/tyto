@@ -1,0 +1,140 @@
+{
+  "facet": "hardware-cost",
+  "summary": "For strix's planner (a once-per-cycle JSON-emitting \"decide next 1-3 actions\" call, not a chatbot), the binding constraint is decision quality and reliable structured output, not raw speed. The strongest evidence (Docker's 21-model, 3,570-case tool-calling eval) puts Qwen3-8B at F1 ~0.92 and Qwen3-14B at ~0.97, with quantization (Q4_K_M) showing no measurable accuracy loss versus F16 — so Q4_K_M is the right default everywhere. My recommended sweet spot is Qwen3-14B-Q4_K_M on a 16GB GPU or a 24GB+ Apple Silicon Mac; the realistic floor for \"good pentest decisions\" is Qwen3-8B-Q4_K_M (~6-7GB), which fits an 8GB GPU. Models at/below 4B (Gemma 3 4B ~0.73 F1) degrade noticeably and should only be used with heavy deterministic scaffolding. Hardware tiers map cleanly: 8GB GPU = 8B class, 16GB = 14B class (or gpt-oss-20b at MXFP4), 24GB+ = 32B class, Apple Silicon scales by unified memory and bandwidth (M4 Pro 24GB runs 14B at 35-55 tok/s). CPU-only is technically possible (~5 tok/s for 8B) but a poor experience — usable as an air-gapped fallback only, not a target. The decisive lever for small-model reliability is grammar-constrained decoding (GBNF/JSON-schema), which llama.cpp/Ollama support natively and which lets you drop to smaller models without losing structured-output validity.",
+  "recommendations": [
+    {
+      "name": "Qwen3-14B (Q4_K_M via Ollama) — RECOMMENDED default brain",
+      "why": "Best quality/footprint balance for agentic planning: F1 ~0.97 on Docker's tool-calling eval (top local model tested), strong nested-JSON and 'when not to call a tool' behavior, hybrid thinking/non-thinking modes. Q4_K_M (~9-10GB with weights+KV) fits a single 16GB GPU (RTX 4060 Ti 16GB / 4070 Ti Super / used 3090) or 24GB+ Apple Silicon. Latency for one planning call is seconds on GPU (the Docker eval's ~142s figure was on a Mac M4 Max across multi-round agent loops, not a single call); for strix's once-per-cycle planner that is fully acceptable. This is the model to design strix's prompts and Scope-Guard-friendly output around.",
+      "license": "Apache-2.0",
+      "free_local_no_api": "yes",
+      "integration": "HTTP/RPC — already wired: strix's internal/planner/llm/ollama.go calls Ollama /api/generate with Format:\"json\". Set Model to \"qwen3:14b\". No code change needed beyond the default model string (currently \"llama3.1\").",
+      "language": "model weights; served by Ollama (Go/llama.cpp). strix stays pure Go talking HTTP to localhost:11434.",
+      "maturity": "Released Apr 2025, actively maintained by Alibaba; one of the most-downloaded open-weight families; production-grade tooling (Ollama, llama.cpp, vLLM, MLX)."
+    },
+    {
+      "name": "Qwen3-8B (Q4_K_M) — realistic floor / 8GB-GPU + good-laptop tier",
+      "why": "The smallest model that still makes GOOD pentest planning decisions: F1 ~0.92 (Docker eval), near the 14B and close to hosted Claude-3-Haiku on tool selection, with NO accuracy loss from Q4 quant. Footprint ~6-7GB fits an 8GB GPU (RTX 4060/3070, laptop 4070) and runs comfortably on 16GB+ Apple Silicon. This should be strix's recommended minimum and the default it auto-selects on detecting <=8GB VRAM.",
+      "license": "Apache-2.0",
+      "free_local_no_api": "yes",
+      "integration": "HTTP/RPC via existing Ollama client; Model=\"qwen3:8b\".",
+      "language": "model weights; Ollama-served. strix = Go over HTTP.",
+      "maturity": "Apr 2025, heavily used, first-class Ollama/llama.cpp support."
+    },
+    {
+      "name": "gpt-oss-20b (MXFP4) — 16GB alternative with strong agentic/CoT",
+      "why": "OpenAI's open-weight MoE engineered to fit a 16GB memory envelope via native MXFP4 quantization; built-in function calling, browsing, code-exec patterns and chain-of-thought. A credible alternative to Qwen3-14B on 16GB rigs and worth A/B-testing as strix's brain. Tradeoff: MoE behavior and Harmony/tool-format quirks; permissive but Apache-2.0-licensed open weights make it safe to ship instructions for.",
+      "license": "Apache-2.0",
+      "free_local_no_api": "yes",
+      "integration": "HTTP/RPC via Ollama (Model=\"gpt-oss:20b\"); same client path as Qwen.",
+      "language": "model weights; Ollama/llama.cpp-served.",
+      "maturity": "Released 2025 by OpenAI as open weights; rapidly adopted, supported in Ollama/llama.cpp/vLLM."
+    },
+    {
+      "name": "Qwen3-32B (Q4_K_M) — 24GB+ / high-end Apple Silicon ceiling",
+      "why": "For operators with a 24GB GPU (RTX 3090/4090) or 32GB+ unified-memory Mac who want maximum planning quality and headroom for longer context/RoE documents. ~22-24GB at Q4_K_M; runs ~30-58 tok/s on M4 Pro/Max class. Diminishing returns vs 14B for strix's structured task, so position it as 'pro tier,' not the default.",
+      "license": "Apache-2.0",
+      "free_local_no_api": "yes",
+      "integration": "HTTP/RPC via Ollama (Model=\"qwen3:32b\").",
+      "language": "model weights; Ollama-served.",
+      "maturity": "Apr 2025, actively maintained."
+    },
+    {
+      "name": "Gemma 3 4B (Q4) — CPU-only / <8GB graceful-degradation fallback",
+      "why": "Surprisingly decent at ~0.73 tool-selection F1 and small enough (~3-4GB) for CPU-only or tiny-GPU air-gapped boxes. Honest limit: at this size the model WILL make worse pentest decisions, so it must be paired with strong deterministic scaffolding (constrained JSON grammar, fixed playbook templates, narrow tool menus, more Scope-Guard rejection-and-retry). Treat as 'something runs everywhere,' not 'good autonomy.'",
+      "license": "Gemma license (free, permissive for use/redistribution; not OSI-approved — note the use-restriction terms before bundling)",
+      "free_local_no_api": "yes",
+      "integration": "HTTP/RPC via Ollama (Model=\"gemma3:4b\"); combine with GBNF/JSON-schema constrained output.",
+      "language": "model weights; Ollama/llama.cpp-served.",
+      "maturity": "Google, 2025, well-supported in Ollama/llama.cpp."
+    },
+    {
+      "name": "GBNF / JSON-schema constrained decoding — the degradation strategy (not a model)",
+      "why": "The single highest-leverage tactic for making smaller models reliable: grammar-constrained sampling masks invalid tokens so output ALWAYS parses to strix's action schema. Plain 'reply JSON only' works ~94-98% of the time; constrained decoding closes the rest, letting strix drop to cheaper local models without breaking the plan->guard->execute pipeline. Pairs with: deterministic playbook scaffolding, smaller tool menus per phase, and validate-then-retry on Scope-Guard rejection.",
+      "license": "MIT (llama.cpp); Ollama MIT",
+      "free_local_no_api": "yes",
+      "integration": "HTTP/RPC — Ollama supports structured outputs via a JSON-schema 'format' field (it compiles to llama.cpp GBNF). Upgrade strix's ollama.go from Format:\"json\" to passing the action JSON schema, so output is grammar-guaranteed, not just hinted.",
+      "language": "llama.cpp (C/C++) under Ollama; strix stays Go over HTTP.",
+      "maturity": "Mature, native in llama.cpp and Ollama as of 2024-2025."
+    }
+  ],
+  "pitfalls": [
+    "Latency numbers are easy to misread: the Docker eval's ~84s (8B) / ~142s (14B) were multi-round agent loops on a Mac, NOT a single planner call. On a GPU a single strix planning call (decide 1-3 actions) is typically a few seconds. Don't size hardware as if every call costs 2 minutes.",
+    "Context length silently eats VRAM. KV cache grows linearly with context: Llama-3-8B Q4 at 32K context adds ~4GB (total ~9GB), turning an '8GB model' into a 16GB requirement. Long RoE/scope docs + accumulating engagement state will blow past an 8GB card unless you cap context, summarize state (strix already has st.Summary()), or enable INT8/Q4 KV-cache.",
+    "CPU-only is a real trap for UX: ~5 tok/s for an 8B at 8-bit on a typical desktop (2-channel DDR5 ~89 GB/s). A 300-token plan = ~minute+. It works air-gapped but is not a 'competes with the big dogs' experience; market it as a fallback, set expectations explicitly, and prefer any GPU or Apple Silicon.",
+    "Sub-7B models (esp. 4B and specialist 'tool' models like Watt-8B F1 0.48, xLAM-8B 0.57) make materially worse pentest decisions and some purpose-built tool models scored WORSE than general models. Don't assume 'function-calling-tuned' = better; benchmark on YOUR action schema.",
+    "Q4_K_M is the safe default (no measured accuracy loss vs F16 in the Docker eval) but going lower (Q3/Q2) degrades reasoning; resist the urge to over-quantize just to fit a bigger model on a small card — a well-fitting Qwen3-8B Q4 beats a crushed Qwen3-32B Q2.",
+    "Unified-memory Macs share RAM between OS/apps and the model; a 16GB Mac cannot actually give 16GB to a 16GB model. Budget realistically (8-10GB usable on a 16GB Mac).",
+    "Licensing: Qwen3 and gpt-oss are Apache-2.0 (clean to ship). Gemma uses Google's custom license with use-restrictions and is NOT OSI-approved — fine to recommend users download, but review before bundling weights or making it the advertised default.",
+    "'JSON mode' alone is not a guarantee. strix currently only sets Format:\"json\" (a hint). For small models, ungrammared JSON occasionally malforms; without true schema-constrained decoding the plan->guard->execute loop can stall on parse errors."
+  ],
+  "open_questions": [
+    "What is strix's official MINIMUM supported hardware tier, and does it ship a hardware-detection step that auto-selects the model (e.g., <=8GB->qwen3:8b, 16GB->qwen3:14b/gpt-oss:20b, 24GB+->qwen3:32b, CPU-only->gemma3:4b + heavy scaffolding)?",
+    "Should strix adopt full JSON-schema-constrained decoding now (upgrade ollama.go from Format:\"json\" to a schema) to make small models reliable, accepting an Ollama-version dependency?",
+    "Single 'one model for everything' vs. tiered profiles: do you want one default (Qwen3-14B) or a quality/speed/footprint selector exposed to the operator?",
+    "Should strix benchmark candidate models against its OWN action schema (the way Docker's open-source model-test framework does) and publish a strix-specific leaderboard, rather than relying on generic BFCL/tool-calling numbers?",
+    "How much of planning can be moved to deterministic scaffolding (phase playbooks, templated recon->scan->exploit progression) so a smaller model is only doing constrained selection — directly improving the CPU-only/8GB story?",
+    "Long-context strategy: cap context + aggressively summarize engagement state, or enable Q4/INT8 KV-cache, to keep the 8GB tier viable as engagements grow?"
+  ],
+  "sources": [
+    {
+      "title": "Docker — Local LLM Tool Calling: A Practical Evaluation (21 models, 3,570 cases, F1 + latency, Q4 vs F16)",
+      "url": "https://www.docker.com/blog/local-llm-tool-calling-a-practical-evaluation/"
+    },
+    {
+      "title": "Ollama VRAM Requirements: Complete 2026 Guide to GPU Memory for Local LLMs",
+      "url": "https://localllm.in/blog/ollama-vram-requirements-for-local-llms"
+    },
+    {
+      "title": "Ollama RAM & VRAM Calculator: Every Model Quick Reference",
+      "url": "https://localaimaster.com/blog/ollama-model-ram-vram-table"
+    },
+    {
+      "title": "Alibaba Introduces Qwen3 — hybrid reasoning, model sizes 0.6B-235B, Apache-2.0",
+      "url": "https://www.alibabacloud.com/blog/alibaba-introduces-qwen3-setting-new-benchmark-in-open-source-ai-with-hybrid-reasoning_602192"
+    },
+    {
+      "title": "Qwen/Qwen3-8B — Hugging Face (Apache-2.0, agent/function-calling)",
+      "url": "https://huggingface.co/Qwen/Qwen3-8B"
+    },
+    {
+      "title": "Qwen Function Calling documentation",
+      "url": "https://qwen.readthedocs.io/en/latest/framework/function_call.html"
+    },
+    {
+      "title": "Hardware Requirements for Running GPT-OSS-20B Locally (16GB envelope, MXFP4)",
+      "url": "https://intuitionlabs.ai/articles/hardware-requirements-gpt-oss-20b"
+    },
+    {
+      "title": "openai/gpt-oss-20b — Hugging Face (Apache-2.0 open weights, tool use)",
+      "url": "https://huggingface.co/openai/gpt-oss-20b"
+    },
+    {
+      "title": "Best Mac for Local AI 2026: M4 vs M3 vs M2 (unified memory, tok/s by chip)",
+      "url": "https://localaimaster.com/blog/apple-silicon-ai-buying-guide"
+    },
+    {
+      "title": "Apple Silicon LLM Benchmarks — real tok/s by model, chip, quantization",
+      "url": "https://llmcheck.net/benchmarks"
+    },
+    {
+      "title": "llama.cpp CPU Performance discussion (memory-bandwidth-bound, CPU tok/s)",
+      "url": "https://github.com/ggml-org/llama.cpp/discussions/3167"
+    },
+    {
+      "title": "llama.cpp Grammar and Structured Output (GBNF / JSON-schema constrained decoding)",
+      "url": "https://deepwiki.com/ggml-org/llama.cpp/8.1-grammar-and-structured-output"
+    },
+    {
+      "title": "A Guide to Structured Generation Using Constrained Decoding",
+      "url": "https://www.aidancooper.co.uk/constrained-decoding/"
+    },
+    {
+      "title": "Context Length in Local LLMs and its impact on VRAM (KV cache scaling)",
+      "url": "https://www.hardware-corner.net/context-length-local-llms/"
+    },
+    {
+      "title": "LLM Quantization 2026: Q4_K_M vs Q8_0 VRAM Guide",
+      "url": "https://www.promptquorum.com/local-llms/llm-quantization-explained"
+    }
+  ]
+}
