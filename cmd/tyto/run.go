@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"time"
@@ -23,14 +24,16 @@ import (
 
 // runOptions holds the bound flags for the run command.
 type runOptions struct {
-	engPath     string
-	dryRun      bool
-	plannerKind string
-	model       string
-	ollamaURL   string
-	cycles      int
-	auditPath   string
-	noReport    bool
+	engPath      string
+	dryRun       bool
+	plannerKind  string
+	model        string
+	ollamaURL    string
+	cycles       int
+	auditPath    string
+	noReport     bool
+	reportFormat string
+	reportOut    string
 }
 
 func newRunCmd() *cobra.Command {
@@ -50,6 +53,8 @@ func newRunCmd() *cobra.Command {
 	f.IntVar(&o.cycles, "cycles", 3, "max plan/act cycles (loop halts early on no progress)")
 	f.StringVar(&o.auditPath, "audit", "", "audit log path (default: <engagement-id>.audit.jsonl)")
 	f.BoolVar(&o.noReport, "no-report", false, "skip printing the report at the end")
+	f.StringVar(&o.reportFormat, "report-format", "md", "report format: md|json")
+	f.StringVar(&o.reportOut, "report-out", "", "write the report to this file (default: stdout)")
 	return cmd
 }
 
@@ -152,9 +157,36 @@ func (o *runOptions) run(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	if !o.noReport {
-		fmt.Fprintln(out)
-		fmt.Fprintln(out, report.Render(eng, st))
+	if o.noReport {
+		return nil
 	}
+	return emitReport(o, eng, st, out)
+}
+
+// emitReport renders the chosen format and writes it to stdout or a file.
+func emitReport(o *runOptions, eng *engagement.Engagement, st *state.State, out io.Writer) error {
+	var data []byte
+	switch o.reportFormat {
+	case "md", "markdown":
+		data = []byte(report.Render(eng, st))
+	case "json":
+		b, err := report.RenderJSON(eng, st)
+		if err != nil {
+			return err
+		}
+		data = b
+	default:
+		return fmt.Errorf("unknown report format %q (want md|json)", o.reportFormat)
+	}
+
+	if o.reportOut == "" {
+		fmt.Fprintln(out)
+		_, err := out.Write(append(data, '\n'))
+		return err
+	}
+	if err := os.WriteFile(o.reportOut, data, 0o644); err != nil {
+		return fmt.Errorf("write report: %w", err)
+	}
+	fmt.Fprintf(out, "report written to %s\n", o.reportOut)
 	return nil
 }
