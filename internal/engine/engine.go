@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sort"
 
 	"github.com/dukotah/tyto/internal/action"
 	"github.com/dukotah/tyto/internal/audit"
@@ -26,6 +27,10 @@ type Options struct {
 	// NoProgressCycleLimit halts the loop after this many consecutive cycles that
 	// discover nothing new and run no novel action. <= 0 means the default (3).
 	NoProgressCycleLimit int
+	// PriorActionKeys are canonical keys of actions completed in an earlier run
+	// (from a resumed snapshot); they are pre-seeded as "seen" so resume doesn't
+	// re-execute them.
+	PriorActionKeys []string
 }
 
 // Engine coordinates one engagement.
@@ -56,7 +61,22 @@ func New(
 	out io.Writer,
 	opts Options,
 ) *Engine {
-	return &Engine{eng: eng, guard: g, planner: p, tools: tools, state: st, audit: a, out: out, opts: opts, seen: make(map[string]bool), throttle: newThrottle(eng.RoE)}
+	e := &Engine{eng: eng, guard: g, planner: p, tools: tools, state: st, audit: a, out: out, opts: opts, seen: make(map[string]bool), throttle: newThrottle(eng.RoE)}
+	for _, k := range opts.PriorActionKeys {
+		e.seen[k] = true
+	}
+	return e
+}
+
+// CompletedActionKeys returns the canonical keys of every action handled this
+// run (deduped, sorted) for persisting to a resumable snapshot.
+func (e *Engine) CompletedActionKeys() []string {
+	keys := make([]string, 0, len(e.seen))
+	for k := range e.seen {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // rec writes an audit entry and fails closed: if the load-bearing audit trail

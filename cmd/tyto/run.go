@@ -18,6 +18,7 @@ import (
 	"github.com/dukotah/tyto/internal/planner/llm"
 	"github.com/dukotah/tyto/internal/report"
 	"github.com/dukotah/tyto/internal/state"
+	"github.com/dukotah/tyto/internal/store"
 	"github.com/dukotah/tyto/internal/sysinfo"
 	"github.com/dukotah/tyto/pkg/version"
 )
@@ -34,6 +35,8 @@ type runOptions struct {
 	noReport     bool
 	reportFormat string
 	reportOut    string
+	resume       bool
+	statePath    string
 }
 
 func newRunCmd() *cobra.Command {
@@ -55,6 +58,8 @@ func newRunCmd() *cobra.Command {
 	f.BoolVar(&o.noReport, "no-report", false, "skip printing the report at the end")
 	f.StringVar(&o.reportFormat, "report-format", "md", "report format: md|json|sarif")
 	f.StringVar(&o.reportOut, "report-out", "", "write the report to this file (default: stdout)")
+	f.BoolVar(&o.resume, "resume", false, "resume from a saved state snapshot (skips completed actions)")
+	f.StringVar(&o.statePath, "state", "", "state snapshot path (default: <engagement-id>.state.json)")
 	return cmd
 }
 
@@ -120,6 +125,23 @@ func (o *runOptions) run(cmd *cobra.Command, _ []string) error {
 	st := state.New()
 	reg := defaultRegistry()
 
+	// Resume: replay a prior snapshot so the run continues where it left off.
+	statePath := o.statePath
+	if statePath == "" {
+		statePath = eng.ID + ".state.json"
+	}
+	var priorActions []string
+	if o.resume {
+		snap, err := store.Load(statePath)
+		if err != nil {
+			return fmt.Errorf("resume: %w", err)
+		}
+		snap.Into(st)
+		priorActions = snap.CompletedActions
+		fmt.Fprintf(out, "resumed from %s: %d asset(s), %d finding(s), %d completed action(s)\n",
+			statePath, len(snap.Assets), len(snap.Findings), len(priorActions))
+	}
+
 	// Bind the signed scope hash + verified-grant count into the audit chain so any
 	// post-hoc scope widening is detectable against the trail.
 	if err := alog.Record("authorization", map[string]any{
@@ -137,7 +159,7 @@ func (o *runOptions) run(cmd *cobra.Command, _ []string) error {
 		st,
 		alog,
 		out,
-		engine.Options{DryRun: o.dryRun, MaxCycles: o.cycles},
+		engine.Options{DryRun: o.dryRun, MaxCycles: o.cycles, PriorActionKeys: priorActions},
 	)
 
 	baseCtx := cmd.Context()
@@ -161,6 +183,11 @@ func (o *runOptions) run(cmd *cobra.Command, _ []string) error {
 
 	if err := eg.Run(ctx); err != nil {
 		return err
+	}
+
+	// Persist progress so the engagement can be resumed later.
+	if err := store.Save(statePath, store.Capture(st, eg.CompletedActionKeys())); err != nil {
+		fmt.Fprintf(out, "warning: could not save state snapshot: %v\n", err)
 	}
 
 	if o.noReport {
