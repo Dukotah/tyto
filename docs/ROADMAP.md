@@ -62,7 +62,18 @@ free-solves a kill chain.
 
 ---
 
-## 🚢 v0.1 Ship Line (the smallest credible, useful product)
+## 🚢 v0.1 Ship Line (the smallest credible, useful product) — ✅ MVP REACHED
+> **Status (June 2026): the v0.1 MVP runs end to end.** scan (`portscan`) →
+> fingerprint (`httpprobe`) → safe web vuln checks (`webcheck`) → validated,
+> grouped Markdown/JSON report, every action under the deterministic Scope Guard
+> + Ed25519 authorization gate, recorded in the tamper-evident hash-chained
+> fail-closed audit log. Proven by an end-to-end test against a live local HTTP
+> server (`internal/engine/mvp_test.go`) and runnable offline via
+> `configs/localhost.engagement.yaml`. **Substitution vs the cut below:** a
+> built-in `webcheck` (safe header/version/listing checks) stands in for embedded
+> Nuclei, which — with vendored templates, SARIF, and SQLite-resume — is the v0.2
+> increment.
+
 **The all-in-one is the north star, NOT the v1 deliverable.** Draw a line and ship the
 differentiator first (which is mostly Phase-1 work anyway). **v0.1 =**
 

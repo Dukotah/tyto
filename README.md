@@ -83,25 +83,43 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the deep dive and
 
 ## Status
 
-🚧 **Pre-alpha — architecture scaffold.** The skeleton, interfaces, Scope Guard,
-and the plan→guard→execute loop are in place. Real tool adapters and the full
-planner are next. This is the foundation, not the finished product.
+🟢 **v0.1 MVP — working end to end.** The full ship line runs: **scan →
+fingerprint → safe web checks → validated, client-ready report**, with every
+action forced through the deterministic **Scope Guard** and recorded in a
+**tamper-evident, hash-chained, fail-closed audit log**. Built-in tools:
+`portscan`, `httpprobe` (HTTP fingerprint), `webcheck` (safe passive
+vuln checks). Planning is grammar-constrained and validated (fails closed);
+high-risk/exploit actions require a client **Ed25519 authorization**. Reports
+export as grouped Markdown or JSON.
 
-## Quick start (once Go + Ollama are installed)
+Next (v0.2): embedded Nuclei + vendored templates, SQLite-resumable engagements,
+the methodology task-tree, and SARIF/PDF reports. See
+[docs/ROADMAP.md](docs/ROADMAP.md).
+
+## Quick start
 
 ```bash
-# 1. pull a local model
-ollama pull llama3.1
-
-# 2. build
+# build
 make build
 
-# 3. validate an engagement file (no actions taken)
+# validate an engagement file (no actions taken)
 ./bin/tyto engagement validate configs/engagement.example.yaml
 
-# 4. dry-run: the planner proposes, the guard rules, nothing executes
+# dry-run: the planner proposes, the guard rules, nothing executes (needs no model)
 ./bin/tyto run --engagement configs/engagement.example.yaml --dry-run
+
+# full run against your OWN machine (start a local server first, e.g.
+# `python -m http.server 8080`), no Ollama required — scripted demo planner:
+./bin/tyto run --engagement configs/localhost.engagement.yaml --planner mock \
+    --report-format md --report-out report.md
+
+# with a local model driving the plan instead of the demo script:
+ollama pull qwen3:14b      # or let tyto auto-pick a size from your RAM
+./bin/tyto run --engagement configs/localhost.engagement.yaml   # planner=ollama
 ```
+
+`tyto authorize keygen` / `tyto authorize sign` produce the client Ed25519
+authorization needed for high-risk or exploit-category actions.
 
 ## License
 
