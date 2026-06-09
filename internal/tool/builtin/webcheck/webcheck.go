@@ -100,6 +100,19 @@ func (t *Tool) Execute(ctx context.Context, a action.Action) (action.Result, err
 		add(state.SeverityMedium, "Directory listing exposed", "the server returned an auto-generated directory index", "body contains \"Index of /\"")
 	}
 
+	// Cookie security flags.
+	for _, c := range resp.Cookies() {
+		if !c.Secure {
+			add(state.SeverityLow, "Cookie without Secure flag", "a Set-Cookie lacks Secure, so it can be sent over plaintext HTTP", "cookie "+c.Name)
+		}
+		if !c.HttpOnly {
+			add(state.SeverityLow, "Cookie without HttpOnly flag", "a Set-Cookie lacks HttpOnly, so it is reachable from JavaScript (XSS theft)", "cookie "+c.Name)
+		}
+		if c.SameSite == http.SameSiteNoneMode || c.SameSite == http.SameSiteDefaultMode {
+			add(state.SeverityInfo, "Cookie without restrictive SameSite", "a Set-Cookie does not restrict cross-site sending (CSRF surface)", "cookie "+c.Name)
+		}
+	}
+
 	res.Findings = findings
 	res.Success = true
 	res.Output = fmt.Sprintf("%s: %d issue(s)", url, len(findings))
