@@ -33,14 +33,18 @@ func New() *State {
 	return &State{assets: make(map[string]*Asset)}
 }
 
-// AddAsset records (or replaces) an asset by ID.
-func (s *State) AddAsset(a *Asset) {
+// AddAsset records (or replaces) an asset by ID. It returns true if the ID was
+// not previously known (i.e. this is a newly discovered asset) — the engine uses
+// that to detect progress for the termination contract.
+func (s *State) AddAsset(a *Asset) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if a.FirstSeen.IsZero() {
 		a.FirstSeen = time.Now().UTC()
 	}
+	_, existed := s.assets[a.ID]
 	s.assets[a.ID] = a
+	return !existed
 }
 
 // Assets returns a snapshot of known assets.
@@ -54,14 +58,16 @@ func (s *State) Assets() []*Asset {
 	return out
 }
 
-// AddFinding records a finding.
-func (s *State) AddFinding(f Finding) {
+// AddFinding records a finding. It returns true (findings are append-only, so
+// every one is novel) to mirror AddAsset and keep progress detection uniform.
+func (s *State) AddFinding(f Finding) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if f.FoundAt.IsZero() {
 		f.FoundAt = time.Now().UTC()
 	}
 	s.findings = append(s.findings, f)
+	return true
 }
 
 // Findings returns a snapshot of all findings.

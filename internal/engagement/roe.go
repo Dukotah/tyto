@@ -55,6 +55,46 @@ func (r RoE) MaxRiskLevel() (action.RiskLevel, error) {
 	return action.ParseRiskLevel(r.MaxRisk)
 }
 
+// Deadline returns the UTC instant at which the current operating window closes,
+// if now falls within one. The engine uses it as a hard stop (via
+// context.WithDeadline) so a run never spills past the permitted window.
+//
+// TimeWindows are recurring daily HH:MM windows with no calendar date, so this
+// expresses "stop when today's permitted window ends," not a multi-day absolute
+// deadline — that would need an explicit dated field (left for a later phase).
+// ok is false when there are no windows (no time-based deadline) or now is
+// outside them all (the guard already denies actions in that case). When several
+// windows currently apply, the latest close wins (run as long as permitted).
+func (r RoE) Deadline(now time.Time) (time.Time, bool) {
+	now = now.UTC()
+	nowMins := now.Hour()*60 + now.Minute()
+	var best time.Time
+	found := false
+	for _, w := range r.TimeWindows {
+		if !w.Contains(now) {
+			continue
+		}
+		start, err1 := parseHM(w.Start)
+		end, err2 := parseHM(w.End)
+		if err1 != nil || err2 != nil {
+			continue
+		}
+		endT := time.Date(now.Year(), now.Month(), now.Day(), end/60, end%60, 0, 0, time.UTC)
+		// A window that wraps midnight (start > end) and currently contains now in
+		// its pre-midnight portion closes tomorrow.
+		if start > end && nowMins >= start {
+			endT = endT.AddDate(0, 0, 1)
+		}
+		if !endT.After(now) {
+			continue
+		}
+		if !found || endT.After(best) {
+			best, found = endT, true
+		}
+	}
+	return best, found
+}
+
 func (r RoE) validate() error {
 	if _, err := r.MaxRiskLevel(); err != nil {
 		return fmt.Errorf("rules_of_engagement.max_risk: %w", err)

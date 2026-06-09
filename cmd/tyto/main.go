@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"time"
 
 	"github.com/dukotah/tyto/internal/audit"
 	"github.com/dukotah/tyto/internal/engagement"
@@ -124,7 +125,7 @@ func cmdRun(args []string) {
 	plannerKind := fs.String("planner", "", "planner backend: ollama|mock (default: ollama, or mock with --dry-run)")
 	model := fs.String("model", "qwen3:14b", "ollama model name")
 	ollamaURL := fs.String("ollama-url", "http://localhost:11434", "ollama base URL")
-	cycles := fs.Int("cycles", 1, "max plan/act cycles")
+	cycles := fs.Int("cycles", 3, "max plan/act cycles (loop halts early on no progress)")
 	auditPath := fs.String("audit", "", "audit log path (default: <engagement-id>.audit.jsonl)")
 	noReport := fs.Bool("no-report", false, "skip printing the report at the end")
 	_ = fs.Parse(args)
@@ -181,6 +182,15 @@ func cmdRun(args []string) {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
+
+	// Hard-stop the run when the permitted operating window closes (in addition to
+	// SIGINT). No windows configured ⇒ no time-based deadline.
+	if deadline, ok := eng.RoE.Deadline(time.Now().UTC()); ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithDeadline(ctx, deadline)
+		defer cancel()
+		fmt.Printf("operating window closes at %s — run will stop then\n", deadline.Format("15:04 MST"))
+	}
 
 	fmt.Printf("tyto %s — engagement %s (%s)\n", version.Version, eng.ID, eng.Client)
 	fmt.Printf("planner=%s  dry-run=%v  audit=%s\n", client.Name(), *dryRun, ap)
