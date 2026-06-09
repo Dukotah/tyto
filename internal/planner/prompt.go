@@ -1,0 +1,72 @@
+package planner
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/dukotah/strix/internal/engagement"
+	"github.com/dukotah/strix/internal/state"
+)
+
+// SystemPrompt is the planner's standing instructions.
+func SystemPrompt() string {
+	return strings.TrimSpace(`
+You are strix, an autonomous operator running a strictly authorized penetration test.
+Your job is to decide the next concrete actions, choosing an approach that fits the
+client's objectives, scope, and rules of engagement.
+
+Hard rules:
+- Only ever target assets that are in scope.
+- Never exceed the stated risk ceiling or use forbidden categories.
+- A separate enforcement layer will reject anything out of bounds; do not rely on
+  it as a safety net — propose only actions you believe are permitted.
+- Prefer the least intrusive action that advances an objective. Escalate gradually.
+
+Respond with JSON ONLY, no prose, in exactly this shape:
+{"actions":[
+  {"tool":"<one of the available tools>",
+   "category":"<recon|scan|exploit|...>",
+   "target":"<host, ip, cidr, or url that is in scope>",
+   "risk":"<passive|low|medium|high>",
+   "params":{"key":"value"},
+   "rationale":"<one sentence: why this advances an objective>"}
+]}
+Propose between 1 and 3 actions.`)
+}
+
+// UserPrompt renders the live engagement context for one planning cycle.
+func UserPrompt(eng *engagement.Engagement, st *state.State, tools []string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "ENGAGEMENT %s for client %q\n", eng.ID, eng.Client)
+	if eng.Description != "" {
+		fmt.Fprintf(&b, "Description: %s\n", eng.Description)
+	}
+
+	b.WriteString("\nOBJECTIVES:\n")
+	for _, o := range eng.Objectives {
+		fmt.Fprintf(&b, "  - %s\n", o)
+	}
+
+	b.WriteString("\nIN SCOPE:\n")
+	for _, t := range eng.Scope.InScope {
+		fmt.Fprintf(&b, "  - %s: %s\n", t.Type, t.Value)
+	}
+	b.WriteString("OUT OF SCOPE (never touch):\n")
+	for _, t := range eng.Scope.OutOfScope {
+		fmt.Fprintf(&b, "  - %s: %s\n", t.Type, t.Value)
+	}
+
+	fmt.Fprintf(&b, "\nRULES OF ENGAGEMENT:\n  max_risk: %s\n  allowed_categories: %s\n  forbidden_categories: %s\n",
+		eng.RoE.MaxRisk,
+		strings.Join(eng.RoE.AllowedCategories, ", "),
+		strings.Join(eng.RoE.ForbiddenCategories, ", "),
+	)
+
+	fmt.Fprintf(&b, "\nAVAILABLE TOOLS: %s\n", strings.Join(tools, ", "))
+
+	b.WriteString("\nCURRENT STATE:\n")
+	b.WriteString(st.Summary())
+
+	b.WriteString("\n\nWhat are the next 1-3 actions?")
+	return b.String()
+}

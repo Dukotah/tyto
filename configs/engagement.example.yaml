@@ -1,0 +1,60 @@
+# Example engagement definition.
+#
+# This is the contract with your client, expressed as data. strix will not run
+# without a valid engagement that includes an authorization record.
+#
+# Copy this to e.g. acme.engagement.yaml (git-ignored) and fill it in for real.
+
+id: ENG-2026-001
+client: Acme Corp
+description: External network and web assessment of Acme's public perimeter.
+
+# Why you're here. The planner uses these to prioritise.
+objectives:
+  - Identify externally exposed services and misconfigurations.
+  - Assess the public web application for OWASP Top 10 issues.
+  - Determine whether an external attacker can reach internal assets.
+
+# WHO authorized this and HOW. Required — strix refuses to run without it.
+authorization:
+  authorized_by: Jane Doe, CISO, Acme Corp
+  authorized_on: 2026-06-01
+  agreement_ref: MSA-2026-ACME-PENTEST-signed.pdf
+  emergency_contact: soc@acme.example
+
+# WHAT you may touch. Out-of-scope always beats in-scope.
+scope:
+  in_scope:
+    - type: cidr
+      value: 203.0.113.0/24
+    - type: domain
+      value: acme.example
+    - type: url
+      value: https://app.acme.example/
+  out_of_scope:
+    - type: domain
+      value: legacy.acme.example      # decommissioning — hands off
+    - type: cidr
+      value: 203.0.113.200/29         # third-party hosted, not ours
+
+# HOW you may operate. The guard enforces every line.
+rules_of_engagement:
+  # Highest risk action allowed: passive | low | medium | high
+  max_risk: medium
+  # Tool categories that are permitted. Empty = none.
+  allowed_categories:
+    - recon
+    - scan
+  # Categories explicitly forbidden even if otherwise allowed.
+  forbidden_categories:
+    - exploit
+    - dos
+  # Only operate during these UTC windows (24h). Empty/omitted = anytime.
+  # Uncomment to restrict (the guard supports windows that wrap past midnight):
+  # time_windows:
+  #   - start: "01:00"
+  #     end: "05:00"
+  time_windows: []
+  # Global pacing.
+  max_requests_per_second: 10
+  max_concurrent_actions: 4

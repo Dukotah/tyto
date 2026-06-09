@@ -1,0 +1,37 @@
+# Binaries
+/bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test / coverage
+*.test
+*.out
+coverage.*
+
+# Engagement artifacts (NEVER commit real client data)
+/engagements/
+/loot/
+/reports/
+*.engagement.yaml
+!configs/*.example.yaml
+
+# Audit logs (may contain sensitive target data)
+*.audit.jsonl
+
+# Local model / cache
+.ollama/
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Go
+go.work
+go.work.sum
+vendor/
