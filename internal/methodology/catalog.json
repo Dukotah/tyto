@@ -128,12 +128,30 @@
     },
     {
       "id": "ssh-enum",
-      "name": "SSH version and auth enumeration",
+      "name": "SSH banner and version assessment",
       "phase": "scanning",
       "category": "scan",
-      "tool": "",
+      "tool": "sshcheck",
       "applies_to": {"service": "ssh"},
-      "why": "enumerate SSH version and permitted auth methods (no built-in tool yet)"
+      "why": "grab the SSH banner and flag obsolete protocol / outdated OpenSSH"
+    },
+    {
+      "id": "http-methods",
+      "name": "HTTP methods review",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "httpmethods",
+      "applies_to": {"service": "http"},
+      "why": "enumerate dangerous HTTP methods (PUT/DELETE/TRACE) and Cross-Site Tracing"
+    },
+    {
+      "id": "https-methods",
+      "name": "HTTP methods review",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "httpmethods",
+      "applies_to": {"service": "https"},
+      "why": "enumerate dangerous HTTP methods (PUT/DELETE/TRACE) and Cross-Site Tracing"
     },
     {
       "id": "smb-enum",
@@ -146,12 +164,12 @@
     },
     {
       "id": "ftp-anon",
-      "name": "FTP anonymous-login check",
+      "name": "FTP banner and anonymous-login check",
       "phase": "scanning",
       "category": "scan",
-      "tool": "",
+      "tool": "ftpcheck",
       "applies_to": {"service": "ftp"},
-      "why": "test for anonymous FTP access (no built-in tool yet)"
+      "why": "grab the FTP banner and test for anonymous login"
     },
     {
       "id": "db-enum",
