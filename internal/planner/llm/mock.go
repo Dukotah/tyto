@@ -1,6 +1,10 @@
 package llm
 
-import "context"
+import (
+	"context"
+	"fmt"
+	"strings"
+)
 
 // Mock is a deterministic Client for tests and offline dry runs. It cycles
 // through Responses, ignoring the prompt.
@@ -20,6 +24,25 @@ func (m *Mock) Generate(_ context.Context, _, _ string) (string, error) {
 	r := m.Responses[m.i%len(m.Responses)]
 	m.i++
 	return r, nil
+}
+
+// NewScriptedMock returns a Mock that drives a basic recon → scan → web-check
+// pass over the given targets, deterministically and with NO model — useful for
+// an offline demo of the full pipeline. Cycle 1 port-scans each target; cycle 2
+// fingerprints and safety-checks each as an HTTP service.
+func NewScriptedMock(targets []string) *Mock {
+	var scan, web []string
+	for _, t := range targets {
+		scan = append(scan, fmt.Sprintf(`{"tool":"portscan","category":"scan","target":%q,"risk":"medium","params":{},"rationale":"enumerate services"}`, t))
+		web = append(web,
+			fmt.Sprintf(`{"tool":"httpprobe","category":"recon","target":%q,"risk":"low","params":{},"rationale":"fingerprint http"}`, t),
+			fmt.Sprintf(`{"tool":"webcheck","category":"scan","target":%q,"risk":"low","params":{},"rationale":"safe web checks"}`, t),
+		)
+	}
+	return &Mock{Responses: []string{
+		`{"actions":[` + strings.Join(scan, ",") + `]}`,
+		`{"actions":[` + strings.Join(web, ",") + `]}`,
+	}}
 }
 
 // NewDemoMock returns a Mock whose single response exercises the Scope Guard

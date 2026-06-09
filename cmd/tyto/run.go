@@ -47,7 +47,7 @@ func newRunCmd() *cobra.Command {
 	f := cmd.Flags()
 	f.StringVar(&o.engPath, "engagement", "", "path to engagement YAML (required)")
 	f.BoolVar(&o.dryRun, "dry-run", false, "plan and guard only; never execute tools")
-	f.StringVar(&o.plannerKind, "planner", "", "planner backend: ollama|mock (default: ollama, or mock with --dry-run)")
+	f.StringVar(&o.plannerKind, "planner", "", "planner backend: ollama|scripted|mock (default: ollama, or mock with --dry-run)")
 	f.StringVar(&o.model, "model", "", "ollama model name (default: auto-detected from RAM)")
 	f.StringVar(&o.ollamaURL, "ollama-url", "http://localhost:11434", "ollama base URL")
 	f.IntVar(&o.cycles, "cycles", 3, "max plan/act cycles (loop halts early on no progress)")
@@ -81,6 +81,12 @@ func (o *runOptions) run(cmd *cobra.Command, _ []string) error {
 	switch kind {
 	case "mock":
 		client = llm.NewDemoMock()
+	case "scripted":
+		var targets []string
+		for _, tgt := range eng.Scope.InScope {
+			targets = append(targets, tgt.Value)
+		}
+		client = llm.NewScriptedMock(targets)
 	case "ollama":
 		m := o.model
 		if m == "" {

@@ -108,9 +108,10 @@ make build
 # dry-run: the planner proposes, the guard rules, nothing executes (needs no model)
 ./bin/tyto run --engagement configs/engagement.example.yaml --dry-run
 
-# full run against your OWN machine (start a local server first, e.g.
-# `python -m http.server 8080`), no Ollama required — scripted demo planner:
-./bin/tyto run --engagement configs/localhost.engagement.yaml --planner mock \
+# full run against your OWN machine, no Ollama required — the "scripted" planner
+# drives portscan -> httpprobe -> webcheck over the in-scope targets:
+python -m http.server 8080 &   # give the web checks something to hit
+./bin/tyto run --engagement configs/localhost.engagement.yaml --planner scripted \
     --report-format md --report-out report.md
 
 # with a local model driving the plan instead of the demo script:
