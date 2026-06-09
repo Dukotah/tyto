@@ -3,8 +3,10 @@ package main
 import (
 	"github.com/dukotah/tyto/internal/guard"
 	"github.com/dukotah/tyto/internal/tool"
+	"github.com/dukotah/tyto/internal/tool/builtin/corscheck"
 	"github.com/dukotah/tyto/internal/tool/builtin/httpprobe"
 	"github.com/dukotah/tyto/internal/tool/builtin/portscan"
+	"github.com/dukotah/tyto/internal/tool/builtin/redircheck"
 	"github.com/dukotah/tyto/internal/tool/builtin/tlscheck"
 	"github.com/dukotah/tyto/internal/tool/builtin/webcheck"
 	"github.com/dukotah/tyto/internal/tool/builtin/webcrawl"
@@ -22,6 +24,8 @@ func defaultRegistry() *tool.Registry {
 	r.MustRegister(tlscheck.New())
 	r.MustRegister(webcrawl.New())
 	r.MustRegister(webinject.New())
+	r.MustRegister(corscheck.New())
+	r.MustRegister(redircheck.New())
 	return r
 }
 

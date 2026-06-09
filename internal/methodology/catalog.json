@@ -92,12 +92,39 @@
     },
     {
       "id": "endpoint-injection",
-      "name": "Injection testing (XSS / SQLi)",
+      "name": "Injection testing (XSS / SQLi / traversal / cmdi)",
       "phase": "exploitation",
       "category": "scan",
       "tool": "webinject",
       "applies_to": {"asset_type": "endpoint"},
-      "why": "test a parameterized endpoint for reflected XSS and error-based SQL injection"
+      "why": "test a parameterized endpoint for XSS, SQL injection, path traversal, and command injection"
+    },
+    {
+      "id": "endpoint-open-redirect",
+      "name": "Open redirect testing",
+      "phase": "exploitation",
+      "category": "scan",
+      "tool": "redircheck",
+      "applies_to": {"asset_type": "endpoint"},
+      "why": "test a parameterized endpoint for open-redirect via redirect-style parameters"
+    },
+    {
+      "id": "http-cors",
+      "name": "CORS misconfiguration check",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "corscheck",
+      "applies_to": {"service": "http"},
+      "why": "check for permissive CORS (reflected or wildcard origin, with credentials)"
+    },
+    {
+      "id": "https-cors",
+      "name": "CORS misconfiguration check",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "corscheck",
+      "applies_to": {"service": "https"},
+      "why": "check for permissive CORS (reflected or wildcard origin, with credentials)"
     },
     {
       "id": "ssh-enum",
