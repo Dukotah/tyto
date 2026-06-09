@@ -64,6 +64,15 @@
       "why": "probe for exposed sensitive paths (secrets, VCS metadata, status endpoints)"
     },
     {
+      "id": "tls-posture",
+      "name": "TLS posture review",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "tlscheck",
+      "applies_to": {"service": "https"},
+      "why": "check for deprecated TLS versions and certificate problems"
+    },
+    {
       "id": "ssh-enum",
       "name": "SSH version and auth enumeration",
       "phase": "scanning",
