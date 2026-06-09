@@ -9,6 +9,13 @@ The model is creative and fallible. The guard is dumb and incorruptible. By
 keeping them apart, we get adaptive testing without ever trusting the model to
 respect the client's boundaries. The guard is the part you can put in a contract.
 
+> **Status:** this describes the *target* architecture. The Phase-0 scaffold has
+> known gaps that **Phase 1 closes** (see [ROADMAP.md](ROADMAP.md)): the guard
+> currently reads the model's self-declared risk/category (Phase 1 makes these
+> tool-authoritative), does **not** yet enforce rate limits, and the audit log is
+> plain append-only JSONL (Phase 1 adds the hash chain + fail-closed). Treat the
+> guarantees below as the destination, not today's state.
+
 ## Data flow
 
 ```
@@ -52,14 +59,19 @@ A pure function: `Evaluate(action, engagement) Decision`. No I/O, no AI, fully
 unit-testable. It is the single chokepoint every action passes through. It checks,
 in order:
 
-1. Target is in scope (and not explicitly out-of-scope).
-2. Action risk level is at or below the engagement's ceiling.
-3. The tool's category is permitted by the RoE.
-4. Time window / rate limits are respected.
+1. Target is in scope (and not explicitly out-of-scope). *(URL matching becomes
+   scheme/host/path-segment aware in Phase 1, replacing naive prefix matching.)*
+2. Action risk is at or below the ceiling — gated on the **tool-authoritative** risk
+   (`max(tool.MaxRisk, perParamRisk)`), **not** the model's self-declared value (Phase 1).
+3. The tool's category is permitted by the RoE — gated on the tool's authoritative
+   category from a closed taxonomy; **unknown tool/category ⇒ deny** (Phase 1).
+4. Time window is respected; **rate/concurrency limits are enforced** (Phase 1) and
+   a high-risk/exploit action additionally requires a **verified authorization** (Phase 1).
 
-A `Decision` is `Allow` or `Deny{reason}`. Denials are logged **and** fed back to
-the planner so it can choose a different approach — the model learns the walls by
-hitting them, but can never pass through.
+A `Decision` is `Allow`, `Deny{reason}`, or `RequireApproval{reason}` (the three-state
+verdict added in Phase 1, so the human gate lives *inside* the deterministic boundary).
+Denials are logged **and** fed back to the planner so it can choose a different approach
+— the model learns the walls by hitting them, but can never pass through.
 
 ### `internal/planner` + `internal/planner/llm`
 The brain. `Plan(ctx, engagement, state) ([]action.Action, error)` builds a
@@ -93,7 +105,9 @@ Turns findings into a report (Markdown first; JSON/SARIF later).
 
 ### `internal/audit`
 Append-only JSONL log of every decision and action — the accountability record.
-This is what you hand the client to prove you stayed in scope.
+This is what you hand the client to prove you stayed in scope. *(Phase 1 makes it
+**tamper-evident** — SHA-256 hash-chained, head anchored, fail-closed on write error,
+with secret redaction — so the record is provably un-altered, not just append-only.)*
 
 ## Design rules
 

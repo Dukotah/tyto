@@ -58,15 +58,18 @@ decide them early.
    grammar-constrained output, a curated CVE/TTP KB, tight orchestration — *to reach*
    that power, not to cap it. The Scope Guard + audit are the moat that makes an
    all-in-one offensive engine legally and defensibly runnable.
-3. **Minimum hardware floor.** Determines the *default* model (8GB→Qwen3-8B,
-   16GB→14B, 24GB+→30B-A3B/32B, CPU→4B). Needed to pick "the" default.
+3. **Minimum *supported* hardware floor.** The recommended default is **Qwen3-14B
+   Q4_K_M** with auto-tiering (8GB→Qwen3-8B, 16GB→14B, 24GB+→30B-A3B/32B, CPU→4B), so
+   the default itself is settled. The open call is only the **floor**: support
+   CPU-only / ≤8GB (Qwen3-4B is offered but degraded — heavy scaffolding required), or
+   require a GPU/Apple-Silicon minimum? That choice gates marketing + the eval matrix.
 4. **Single-binary purity vs. capability.** Pure-Go core works on bare Windows;
    higher-signal tools (nmap, ZAP/JVM, massdns, Chrome-headless, Metasploit) pull
    external deps. Recommended: **pure-Go core, external tools as optional,
    runtime-detected, gracefully-degrading adapters.**
 5. **Will tyto ship commercially / closed-source?** If yes, the license boundary is
    a hard rule: embed only MIT/Apache/BSD/MPL; **shell-out** nmap (NPSL), ZAP-adjacent
-   GPL tools, sqlmap/Arjun (AGPL), Metasploit, OpenVAS. If purely personal, the
+   GPL tools, sqlmap (GPLv2), Arjun (AGPL), Metasploit, OpenVAS. If purely personal, the
    constraints relax (but bundling nmap data still needs care).
 6. **Ship a bundled model, or orchestrate whatever the operator pulls?** Bundling →
    Apache-2.0 (Qwen3/Mistral) is effectively mandatory; operator-supplied → you can
@@ -148,3 +151,37 @@ Format: **facet** — one-line recommendation. (Full detail + sources in the mat
 16. **go-platform** — cobra CLI + Charm/Bubble Tea TUI (passive view); reject Go
     native `plugin` (no Windows); use `hashicorp/go-plugin` gRPC for third-party
     extensions; koanf config; slog; GoReleaser static builds; gocron/self-update opt-in.
+
+---
+
+## Review-hardening addendum (9-dimension adversarial review, June 2026)
+
+The roadmap was stress-tested by 9 specialist reviewers + per-finding adversarial
+verifiers (68 agents). **Verdict: technically rock-solid — zero hallucinated
+dependencies, every library/model/license verified against live sources.** 53
+confirmed/partial findings (6 reviewer claims refuted) were folded into ROADMAP.md.
+The structurally important changes:
+
+- **Guard gates on authoritative inputs** (tool-registry risk/category + param
+  classifier), never on model-supplied strings; unknown tool/category ⇒ deny. *(Closed
+  a real model-controlled bypass of the risk ceiling — the #1 fix.)*
+- **Authorization gate enforced in the guard** (Ed25519, client-supplied key, scope-hash
+  bound into the audit chain) — moved Phase 5 → Phase 1.
+- **3-state guard verdict** (`Deny | Allow | RequireApproval`) + hash-chained Approval
+  record — reserved in Phase 1 so the human gate lives *inside* the deterministic boundary.
+- **Quarantine invariant** (raw tool output never reaches the planner prompt) pulled
+  forward as a hard precondition for any untrusted-input tool.
+- **Closed observe→re-plan loop with typed Assets** + deterministic termination contract
+  (dup-action dedup, no-progress halt, per-engagement deadline).
+- **Canonical typed action taxonomy** (closed enum + blast-radius axis) — the single
+  source the schema, guard, methodology, and report share.
+- **Credential/identity data model** (provisioned + recovered, redacted) — Phase 2.
+- **New Phase 5 — Internal/Identity (AD/SMB/Kerberos)** via NetExec/impacket/kerbrute +
+  BloodHound-CE (Apache-2.0); the single biggest capability gap for "all-in-one."
+- **Finding dedup/correlation** (fingerprint + N evidence instances) in the core binary.
+- **Evaluation harness** from Phase 1 (golden-file CI + nightly model-tier eval).
+- **Explicit v0.1 Ship Line** so the differentiator ships before the mega-tool.
+
+**Un-researched gap to fill: a 17th facet — `credential-attacks`** (hydra/NetExec online,
+hashcat/john offline, lockout-awareness). The original sweep never covered it; do a
+focused research pass before building Phase 6's credential-attack tooling.
