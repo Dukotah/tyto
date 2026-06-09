@@ -39,7 +39,7 @@ func termEngine(t *testing.T, client llm.Client, opts Options) (*Engine, *state.
 	reg := tool.NewRegistry()
 	reg.MustRegister(fakeScanner{})
 	st := state.New()
-	g := guard.New(eng, map[string]guard.ToolMeta{"scanner": {Category: action.CategoryScan, MaxRisk: action.RiskMedium}})
+	g := guard.New(eng, map[string]guard.ToolMeta{"scanner": {Category: action.CategoryScan, MaxRisk: action.RiskMedium}}, nil)
 	return New(eng, g, planner.New(client), reg, st, audit.NewLog(io.Discard), io.Discard, opts), st
 }
 

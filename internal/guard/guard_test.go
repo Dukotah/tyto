@@ -48,7 +48,7 @@ func testTools() map[string]ToolMeta {
 // guardAt builds a guard whose clock is fixed, so time-window checks are
 // deterministic in tests.
 func guardAt(e *engagement.Engagement, hhmm string) *Guard {
-	g := New(e, testTools())
+	g := New(e, testTools(), nil)
 	t, _ := time.Parse("15:04", hhmm)
 	g.now = func() time.Time {
 		return time.Date(2026, 1, 1, t.Hour(), t.Minute(), 0, 0, time.UTC)
@@ -112,7 +112,7 @@ func TestEvaluate(t *testing.T) {
 		},
 	}
 
-	g := New(e, testTools()) // no time windows => anytime
+	g := New(e, testTools(), nil) // no time windows => anytime
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			got := g.Evaluate(tc.act)
@@ -131,7 +131,7 @@ func TestEvaluate(t *testing.T) {
 func TestEvaluateIgnoresModelDeclaredRisk(t *testing.T) {
 	e := testEngagement()
 	e.RoE.MaxRisk = "passive"
-	g := New(e, testTools())
+	g := New(e, testTools(), nil)
 
 	d := g.Evaluate(action.Action{
 		Tool: "portscan", Target: "203.0.113.10",
@@ -145,7 +145,7 @@ func TestEvaluateIgnoresModelDeclaredRisk(t *testing.T) {
 // TestEvaluateUnknownToolFailsClosed verifies an unregistered (e.g. hallucinated)
 // tool name is denied by the guard, not silently skipped downstream.
 func TestEvaluateUnknownToolFailsClosed(t *testing.T) {
-	g := New(testEngagement(), testTools())
+	g := New(testEngagement(), testTools(), nil)
 	d := g.Evaluate(action.Action{Tool: "made-up-tool", Target: "203.0.113.10"})
 	if d.Verdict != VerdictDeny {
 		t.Fatalf("unknown tool must be denied, got %s", d.Verdict)

@@ -61,7 +61,7 @@ func TestObserveReplanLoopSurfacesDiscoveredService(t *testing.T) {
 	client := &capturingClient{responses: []string{
 		`{"actions":[{"tool":"scanner","category":"scan","target":"h","risk":"medium","params":{},"rationale":"enumerate"}]}`,
 	}}
-	g := guard.New(eng, map[string]guard.ToolMeta{"scanner": {Category: action.CategoryScan, MaxRisk: action.RiskMedium}})
+	g := guard.New(eng, map[string]guard.ToolMeta{"scanner": {Category: action.CategoryScan, MaxRisk: action.RiskMedium}}, nil)
 	st := state.New()
 	e := New(eng, g, planner.New(client), reg, st, audit.NewLog(io.Discard), io.Discard, Options{MaxCycles: 2})
 

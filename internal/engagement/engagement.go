@@ -10,12 +10,19 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Authorization records who approved the test and how. Without it, no run.
+// Authorization records who approved the test and how. Without it, no run. The
+// optional cryptographic fields (ClientPublicKeyB64 + Grants) let a client
+// authorize high-consequence actions in a tamper-evident, attributable way; see
+// authorization.go.
 type Authorization struct {
 	AuthorizedBy     string `yaml:"authorized_by"`
 	AuthorizedOn     string `yaml:"authorized_on"`
 	AgreementRef     string `yaml:"agreement_ref"`
 	EmergencyContact string `yaml:"emergency_contact"`
+	// ClientPublicKeyB64 is the client's Ed25519 public key, pinned out-of-band.
+	ClientPublicKeyB64 string `yaml:"client_public_key"`
+	// Grants are client-signed authorizations for high/exploit actions.
+	Grants []AuthGrant `yaml:"grants"`
 }
 
 func (a Authorization) validate() error {

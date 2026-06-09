@@ -81,14 +81,18 @@ type RiskClassifier func(tool string, params map[string]string) action.RiskLevel
 type Guard struct {
 	eng      *engagement.Engagement
 	tools    map[string]ToolMeta
+	grants   []engagement.VerifiedGrant
 	classify RiskClassifier
 	now      func() time.Time // injectable for tests
 }
 
-// New builds a Guard for the given engagement and an immutable snapshot of the
-// registered tools' authoritative category/risk.
-func New(eng *engagement.Engagement, tools map[string]ToolMeta) *Guard {
-	return &Guard{eng: eng, tools: tools, now: time.Now}
+// New builds a Guard for the given engagement, an immutable snapshot of the
+// registered tools' authoritative category/risk, and the set of cryptographically
+// verified authorization grants (nil for engagements with no high/exploit
+// authorization). The guard only ever sees grants that already verified, so it
+// trusts no key material itself.
+func New(eng *engagement.Engagement, tools map[string]ToolMeta, grants []engagement.VerifiedGrant) *Guard {
+	return &Guard{eng: eng, tools: tools, grants: grants, now: time.Now}
 }
 
 // WithClassifier attaches a per-param risk classifier and returns the guard.
@@ -139,12 +143,38 @@ func (g *Guard) Evaluate(a action.Action) Decision {
 		return Deny(fmt.Sprintf("category %q is not in the allowed list", cat))
 	}
 
+	// 3.5 Authorization. High-risk or exploit-category actions require a verified,
+	// client-signed grant covering this target at this tier. No covering grant ⇒
+	// deny (fail closed). This is gated on the AUTHORITATIVE effective risk and
+	// tool category, never on the model's self-declared values.
+	if requiresAuthorization(meta.Category, effRisk) && !g.authorized(a.Target, effRisk) {
+		return Deny(fmt.Sprintf("action (%s, risk %s) requires a verified client authorization covering %q at this tier", cat, effRisk, a.Target))
+	}
+
 	// 4. Time window.
 	if !withinWindows(g.eng.RoE.TimeWindows, g.now().UTC()) {
 		return Deny("current time is outside the permitted operating window")
 	}
 
 	return Allow()
+}
+
+// requiresAuthorization reports whether an action is high-consequence enough to
+// need a signed client grant: a high effective risk, or any exploit-category tool.
+func requiresAuthorization(cat action.Category, effRisk action.RiskLevel) bool {
+	return effRisk >= action.RiskHigh || cat == action.CategoryExploit
+}
+
+// authorized reports whether some verified grant covers the target at or above
+// the action's tier. Coverage reuses the same scope-matching used for in-scope
+// targets, so a grant can be a CIDR/domain/url just like a scope entry.
+func (g *Guard) authorized(target string, tier action.RiskLevel) bool {
+	for _, gr := range g.grants {
+		if tier <= gr.MaxTier && (engagement.Scope{InScope: gr.Targets}).Contains(target) {
+			return true
+		}
+	}
+	return false
 }
 
 // categoryIn reports whether cat is named in a RoE category list. List entries are

@@ -4,10 +4,14 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/base64"
 	"flag"
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"time"
 
 	"github.com/dukotah/tyto/internal/audit"
@@ -35,6 +39,8 @@ func main() {
 		cmdTools()
 	case "engagement":
 		cmdEngagement(os.Args[2:])
+	case "authorize":
+		cmdAuthorize(os.Args[2:])
 	case "run":
 		cmdRun(os.Args[2:])
 	case "help", "-h", "--help":
@@ -55,6 +61,7 @@ USAGE:
 COMMANDS:
   run           Run an engagement (plan -> guard -> execute loop)
   engagement    Work with engagement files (validate)
+  authorize     Client-side: generate a keypair / sign an engagement (keygen|sign)
   tools         List registered tool adapters
   version       Print version
   help          Show this help
@@ -62,6 +69,7 @@ COMMANDS:
 EXAMPLES:
   tyto engagement validate configs/engagement.example.yaml
   tyto run --engagement configs/engagement.example.yaml --dry-run
+  tyto authorize keygen
   tyto tools
 
 Run "tyto <command> -h" for command flags.
@@ -118,6 +126,77 @@ func cmdEngagement(args []string) {
 	}
 }
 
+// cmdAuthorize is the client-side helper for producing authorization material.
+// Signing happens on the CLIENT's machine with the CLIENT's private key; tyto
+// only ever VERIFIES at run time. This subcommand is a convenience so a client
+// without their own tooling can still generate a keypair and sign an engagement.
+//
+//	tyto authorize keygen
+//	tyto authorize sign --engagement <file> --private-key <b64> --max-tier high [--targets <t1,t2>]
+func cmdAuthorize(args []string) {
+	if len(args) < 1 {
+		fmt.Fprintln(os.Stderr, "usage: tyto authorize <keygen|sign> [flags]")
+		os.Exit(2)
+	}
+	switch args[0] {
+	case "keygen":
+		pub, priv, err := ed25519.GenerateKey(rand.Reader)
+		if err != nil {
+			fatal(err.Error())
+		}
+		fmt.Println("# Give the client_public_key to the tyto operator (pin it in the engagement).")
+		fmt.Println("# Keep the private_key SECRET on the client's machine; use it with 'authorize sign'.")
+		fmt.Printf("client_public_key: %s\n", base64.StdEncoding.EncodeToString(pub))
+		fmt.Printf("private_key:       %s\n", base64.StdEncoding.EncodeToString(priv))
+	case "sign":
+		fs := flag.NewFlagSet("authorize sign", flag.ExitOnError)
+		engPath := fs.String("engagement", "", "engagement YAML to authorize (required)")
+		privB64 := fs.String("private-key", "", "client base64 Ed25519 private key (required)")
+		maxTier := fs.String("max-tier", "high", "highest authorized risk tier: passive|low|medium|high")
+		targets := fs.String("targets", "", "comma-separated targets the grant covers (default: all in-scope)")
+		_ = fs.Parse(args[1:])
+		if *engPath == "" || *privB64 == "" {
+			fatal("--engagement and --private-key are required")
+		}
+		eng, err := engagement.Load(*engPath)
+		if err != nil {
+			fatal(err.Error())
+		}
+		priv, err := base64.StdEncoding.DecodeString(*privB64)
+		if err != nil || len(priv) != ed25519.PrivateKeySize {
+			fatal("--private-key is not a valid base64 Ed25519 private key")
+		}
+		privKey := ed25519.PrivateKey(priv)
+		sig := ed25519.Sign(privKey, eng.CanonicalBytes())
+		pub := privKey.Public().(ed25519.PublicKey)
+		fmt.Println("# Add this under authorization.grants in the engagement YAML:")
+		fmt.Printf("  - public_key: %s\n", base64.StdEncoding.EncodeToString(pub))
+		fmt.Printf("    signature: %s\n", base64.StdEncoding.EncodeToString(sig))
+		fmt.Printf("    max_tier: %s\n", *maxTier)
+		if *targets == "" {
+			fmt.Println("    covers_targets:   # mirror the in-scope targets the client authorizes")
+		} else {
+			fmt.Println("    covers_targets:")
+			for _, t := range splitCSV(*targets) {
+				fmt.Printf("      - {type: domain, value: %s}   # adjust type as needed\n", t)
+			}
+		}
+	default:
+		fmt.Fprintf(os.Stderr, "unknown authorize subcommand %q\n", args[0])
+		os.Exit(2)
+	}
+}
+
+func splitCSV(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 func cmdRun(args []string) {
 	fs := flag.NewFlagSet("run", flag.ExitOnError)
 	engPath := fs.String("engagement", "", "path to engagement YAML (required)")
@@ -167,11 +246,28 @@ func cmdRun(args []string) {
 	}
 	defer func() { _ = closeAudit() }()
 
+	// Verify any client authorization grants up front and fail closed on a bad one
+	// (a forged/tampered grant must abort, not silently fall back to no-auth).
+	grants, err := eng.VerifiedGrants()
+	if err != nil {
+		fatal(fmt.Sprintf("authorization: %v", err))
+	}
+
 	st := state.New()
 	reg := defaultRegistry()
+
+	// Bind the signed scope hash + verified-grant count into the audit chain so any
+	// post-hoc scope widening is detectable against the trail.
+	if err := alog.Record("authorization", map[string]any{
+		"scope_hash": eng.ScopeHash(), "verified_grants": len(grants),
+		"client_key": eng.Authorization.ClientPublicKeyB64,
+	}); err != nil {
+		fatal(fmt.Sprintf("write audit head: %v", err))
+	}
+
 	eg := engine.New(
 		eng,
-		guard.New(eng, toolSnapshot(reg)),
+		guard.New(eng, toolSnapshot(reg), grants),
 		planner.New(client),
 		reg,
 		st,

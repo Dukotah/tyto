@@ -21,6 +21,20 @@ authorization:
   authorized_on: 2026-06-01
   agreement_ref: MSA-2026-ACME-PENTEST-signed.pdf
   emergency_contact: soc@acme.example
+  # OPTIONAL cryptographic authorization for HIGH-RISK / EXPLOIT actions.
+  # Without it, the guard denies any high/exploit action regardless of max_risk.
+  # The client generates a keypair (`tyto authorize keygen`), gives you the
+  # public key (pinned below), and signs this engagement's canonical scope
+  # (`tyto authorize sign`). Grants are tamper-evident: widening scope after
+  # signing invalidates them.
+  # client_public_key: <base64 ed25519 public key>
+  # grants:
+  #   - public_key: <same base64 public key>
+  #     signature: <base64 signature from 'tyto authorize sign'>
+  #     max_tier: high
+  #     covers_targets:
+  #       - type: cidr
+  #         value: 203.0.113.0/24
 
 # WHAT you may touch. Out-of-scope always beats in-scope.
 scope:
