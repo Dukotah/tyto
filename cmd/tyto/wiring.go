@@ -1,0 +1,25 @@
+package main
+
+import (
+	"github.com/dukotah/tyto/internal/guard"
+	"github.com/dukotah/tyto/internal/tool"
+	"github.com/dukotah/tyto/internal/tool/builtin/portscan"
+)
+
+// defaultRegistry wires the built-in tool adapters.
+func defaultRegistry() *tool.Registry {
+	r := tool.NewRegistry()
+	r.MustRegister(portscan.New())
+	return r
+}
+
+// toolSnapshot builds the immutable, read-only authority the Scope Guard gates
+// on: each tool's authoritative category + risk ceiling, with no access to
+// Execute. The guard never trusts model-supplied risk/category.
+func toolSnapshot(r *tool.Registry) map[string]guard.ToolMeta {
+	m := make(map[string]guard.ToolMeta)
+	for _, t := range r.All() {
+		m[t.Name()] = guard.ToolMeta{Category: t.Category(), MaxRisk: t.MaxRisk()}
+	}
+	return m
+}
