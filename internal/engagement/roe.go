@@ -2,6 +2,7 @@ package engagement
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/dukotah/tyto/internal/action"
@@ -118,6 +119,13 @@ func (r RoE) validate() error {
 		if _, err := parseHM(w.End); err != nil {
 			return fmt.Errorf("rules_of_engagement.time_windows.end: %w", err)
 		}
+	}
+	// Pacing knobs must be sane so a typo can't silently disable throttling.
+	if math.IsNaN(r.MaxRPS) || math.IsInf(r.MaxRPS, 0) || r.MaxRPS < 0 {
+		return fmt.Errorf("rules_of_engagement.max_requests_per_second must be a non-negative number")
+	}
+	if r.MaxConcurrent < 0 {
+		return fmt.Errorf("rules_of_engagement.max_concurrent_actions must be >= 0")
 	}
 	return nil
 }

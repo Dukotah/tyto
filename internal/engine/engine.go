@@ -40,7 +40,8 @@ type Engine struct {
 	opts    Options
 	// seen holds the canonical keys of actions already handled this run so
 	// duplicates are skipped deterministically (part of the termination contract).
-	seen map[string]bool
+	seen     map[string]bool
+	throttle *throttle
 }
 
 // New wires an engine. The caller owns the state and audit log (so it can render
@@ -55,7 +56,7 @@ func New(
 	out io.Writer,
 	opts Options,
 ) *Engine {
-	return &Engine{eng: eng, guard: g, planner: p, tools: tools, state: st, audit: a, out: out, opts: opts, seen: make(map[string]bool)}
+	return &Engine{eng: eng, guard: g, planner: p, tools: tools, state: st, audit: a, out: out, opts: opts, seen: make(map[string]bool), throttle: newThrottle(eng.RoE)}
 }
 
 // rec writes an audit entry and fails closed: if the load-bearing audit trail
@@ -196,6 +197,14 @@ func (e *Engine) handle(ctx context.Context, a action.Action) (bool, error) {
 	}); err != nil {
 		return false, err
 	}
+
+	// Enforce RoE pacing (per-target rate + global concurrency) right before the
+	// tool touches the target. A cancelled context here aborts without executing.
+	release, err := e.throttle.acquire(ctx, a.Target)
+	if err != nil {
+		return false, err
+	}
+	defer release()
 
 	res, err := t.Execute(ctx, a)
 	if err != nil {
