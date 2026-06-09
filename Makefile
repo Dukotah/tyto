@@ -4,7 +4,7 @@ BIN_DIR := bin
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X $(PKG)/pkg/version.Version=$(VERSION)
 
-.PHONY: all build run test lint fmt tidy clean install
+.PHONY: all build run test eval lint fmt tidy clean install
 
 all: build
 
@@ -17,6 +17,9 @@ run: build ## Build and run
 
 test: ## Run tests
 	go test ./...
+
+eval: ## Run the hermetic planner/guard evaluation scorer (no GPU needed)
+	go test ./internal/eval/ -run TestHermetic -v
 
 lint: ## Run golangci-lint (must be installed)
 	golangci-lint run ./...
