@@ -56,7 +56,7 @@ func newRunCmd() *cobra.Command {
 	f.IntVar(&o.cycles, "cycles", 3, "max plan/act cycles (loop halts early on no progress)")
 	f.StringVar(&o.auditPath, "audit", "", "audit log path (default: <engagement-id>.audit.jsonl)")
 	f.BoolVar(&o.noReport, "no-report", false, "skip printing the report at the end")
-	f.StringVar(&o.reportFormat, "report-format", "md", "report format: md|json|sarif")
+	f.StringVar(&o.reportFormat, "report-format", "md", "report format: md|json|sarif|html")
 	f.StringVar(&o.reportOut, "report-out", "", "write the report to this file (default: stdout)")
 	f.BoolVar(&o.resume, "resume", false, "resume from a saved state snapshot (skips completed actions)")
 	f.StringVar(&o.statePath, "state", "", "state snapshot path (default: <engagement-id>.state.json)")
@@ -214,8 +214,14 @@ func emitReport(o *runOptions, eng *engagement.Engagement, st *state.State, out 
 			return err
 		}
 		data = b
+	case "html":
+		b, err := report.RenderHTML(eng, st)
+		if err != nil {
+			return err
+		}
+		data = b
 	default:
-		return fmt.Errorf("unknown report format %q (want md|json|sarif)", o.reportFormat)
+		return fmt.Errorf("unknown report format %q (want md|json|sarif|html)", o.reportFormat)
 	}
 
 	if o.reportOut == "" {

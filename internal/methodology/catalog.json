@@ -19,6 +19,33 @@
       "why": "identify the web server, status, and title of an HTTP service"
     },
     {
+      "id": "http-waf",
+      "name": "WAF/CDN fingerprint",
+      "phase": "recon",
+      "category": "recon",
+      "tool": "wafdetect",
+      "applies_to": {"service": "http"},
+      "why": "fingerprint any WAF/CDN so later active steps account for its blocking"
+    },
+    {
+      "id": "https-waf",
+      "name": "WAF/CDN fingerprint",
+      "phase": "recon",
+      "category": "recon",
+      "tool": "wafdetect",
+      "applies_to": {"service": "https"},
+      "why": "fingerprint any WAF/CDN so later active steps account for its blocking"
+    },
+    {
+      "id": "endpoint-takeover",
+      "name": "Subdomain takeover check",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "subtakeover",
+      "applies_to": {"asset_type": "endpoint"},
+      "why": "check for dangling-DNS subdomain-takeover fingerprints"
+    },
+    {
       "id": "https-fingerprint",
       "name": "HTTPS service fingerprint",
       "phase": "recon",

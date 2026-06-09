@@ -13,7 +13,9 @@ import (
 	"github.com/dukotah/tyto/internal/tool/builtin/redircheck"
 	"github.com/dukotah/tyto/internal/tool/builtin/secretscan"
 	"github.com/dukotah/tyto/internal/tool/builtin/sshcheck"
+	"github.com/dukotah/tyto/internal/tool/builtin/subtakeover"
 	"github.com/dukotah/tyto/internal/tool/builtin/tlscheck"
+	"github.com/dukotah/tyto/internal/tool/builtin/wafdetect"
 	"github.com/dukotah/tyto/internal/tool/builtin/webcheck"
 	"github.com/dukotah/tyto/internal/tool/builtin/webcrawl"
 	"github.com/dukotah/tyto/internal/tool/builtin/webdiscover"
@@ -38,6 +40,8 @@ func defaultRegistry() *tool.Registry {
 	r.MustRegister(ftpcheck.New())
 	r.MustRegister(emailsec.New())
 	r.MustRegister(secretscan.New())
+	r.MustRegister(wafdetect.New())
+	r.MustRegister(subtakeover.New())
 	return r
 }
 
