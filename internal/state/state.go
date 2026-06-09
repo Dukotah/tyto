@@ -11,11 +11,13 @@ import (
 )
 
 // Asset is something discovered during the engagement (a host, service, URL...).
+// planner tags classify each exported string field for the quarantine boundary
+// (see quarantine.go): Attrs holds tool-controlled free text and is quarantined.
 type Asset struct {
-	ID        string
-	Type      string // host | service | url
-	Value     string
-	Attrs     map[string]string
+	ID        string            `planner:"quarantined"`
+	Type      string            `planner:"safe"` // host | service | url
+	Value     string            `planner:"safe"`
+	Attrs     map[string]string // quarantined: not a string field; never enters Summary
 	FirstSeen time.Time
 }
 
@@ -80,11 +82,15 @@ func (s *State) Summary() string {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "  assets: %d, findings: %d\n", len(s.assets), len(s.findings))
+	// Only the closed, typed planner projections reach the prompt — never raw
+	// tool output. See quarantine.go.
 	for _, a := range s.assets {
-		fmt.Fprintf(&b, "  - asset %s %s\n", a.Type, a.Value)
+		v := a.plannerView()
+		fmt.Fprintf(&b, "  - asset %s %s\n", v.Type, v.Value)
 	}
 	for _, f := range s.findings {
-		fmt.Fprintf(&b, "  - finding [%s] %s (%s)\n", f.Severity, f.Title, f.Target)
+		v := f.plannerView()
+		fmt.Fprintf(&b, "  - finding [%s] %s (%s)\n", v.Severity, v.Title, v.Target)
 	}
 	return b.String()
 }
