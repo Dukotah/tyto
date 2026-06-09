@@ -79,11 +79,11 @@ func (t *Tool) Execute(ctx context.Context, a action.Action) (action.Result, err
 	sort.Strings(names) // deterministic order
 
 	var hits int
-	add := func(sev state.Severity, title, detail, evidence, target string) {
+	add := func(sev state.Severity, title, detail, evidence, target, cvss string) {
 		hits++
 		res.Findings = append(res.Findings, state.Finding{
 			ID: fmt.Sprintf("INJ-%s-%d", a.ID, hits), Title: title, Severity: sev,
-			Target: target, Description: detail, Evidence: evidence, Tool: t.Name(), Validated: true,
+			Target: target, Description: detail, Evidence: evidence, Tool: t.Name(), Validated: true, CVSS: cvss,
 		})
 	}
 
@@ -100,7 +100,7 @@ func (t *Tool) Execute(ctx context.Context, a action.Action) (action.Result, err
 		if body, u, err := t.inject(ctx, base, name, xss); err == nil && strings.Contains(body, xss) {
 			add(state.SeverityHigh, "Reflected XSS in parameter "+name,
 				"the parameter's value is reflected into the response unencoded; a script payload executes",
-				"payload reflected verbatim: "+xss, u)
+				"payload reflected verbatim: "+xss, u, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N")
 		}
 
 		// Error-based SQLi: a quote that surfaces a DB error indicates injection.
@@ -111,7 +111,7 @@ func (t *Tool) Execute(ctx context.Context, a action.Action) (action.Result, err
 				errBased = true
 				add(state.SeverityHigh, "SQL injection (error-based) in parameter "+name,
 					"injecting a single quote surfaced a database error, indicating unsanitized SQL",
-					"db error signature: "+m, u)
+					"db error signature: "+m, u, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H")
 			}
 		}
 
@@ -125,7 +125,7 @@ func (t *Tool) Execute(ctx context.Context, a action.Action) (action.Result, err
 				if m := passwdRe.FindString(body); m != "" {
 					add(state.SeverityHigh, "Path traversal in parameter "+name,
 						"injecting a directory-traversal sequence returned the contents of /etc/passwd",
-						"matched passwd entry: "+m, u)
+						"matched passwd entry: "+m, u, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N")
 					break
 				}
 			}
@@ -139,7 +139,7 @@ func (t *Tool) Execute(ctx context.Context, a action.Action) (action.Result, err
 				if m := idOutputRe.FindString(body); m != "" {
 					add(state.SeverityCritical, "Command injection in parameter "+name,
 						"appending a shell command to the value executed it; the response contains `id` output",
-						"matched command output: "+m, u)
+						"matched command output: "+m, u, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H")
 					break
 				}
 			}
@@ -162,7 +162,7 @@ func (t *Tool) Execute(ctx context.Context, a action.Action) (action.Result, err
 						"a TRUE vs FALSE SQL condition produced response bodies differing in length, "+
 							"suggesting the value is interpolated into a SQL query",
 						fmt.Sprintf("true-condition body %d bytes, false-condition body %d bytes (delta %d)",
-							len(bodyT), len(bodyF), diff), uT)
+							len(bodyT), len(bodyF), diff), uT, "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N")
 				}
 			}
 		}

@@ -5,11 +5,13 @@ import (
 	"github.com/dukotah/tyto/internal/tool"
 	"github.com/dukotah/tyto/internal/tool/builtin/corscheck"
 	"github.com/dukotah/tyto/internal/tool/builtin/dnsenum"
+	"github.com/dukotah/tyto/internal/tool/builtin/emailsec"
 	"github.com/dukotah/tyto/internal/tool/builtin/ftpcheck"
 	"github.com/dukotah/tyto/internal/tool/builtin/httpmethods"
 	"github.com/dukotah/tyto/internal/tool/builtin/httpprobe"
 	"github.com/dukotah/tyto/internal/tool/builtin/portscan"
 	"github.com/dukotah/tyto/internal/tool/builtin/redircheck"
+	"github.com/dukotah/tyto/internal/tool/builtin/secretscan"
 	"github.com/dukotah/tyto/internal/tool/builtin/sshcheck"
 	"github.com/dukotah/tyto/internal/tool/builtin/tlscheck"
 	"github.com/dukotah/tyto/internal/tool/builtin/webcheck"
@@ -34,6 +36,8 @@ func defaultRegistry() *tool.Registry {
 	r.MustRegister(dnsenum.New())
 	r.MustRegister(sshcheck.New())
 	r.MustRegister(ftpcheck.New())
+	r.MustRegister(emailsec.New())
+	r.MustRegister(secretscan.New())
 	return r
 }
 

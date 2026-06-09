@@ -44,6 +44,9 @@ type Finding struct {
 	Description string   `planner:"quarantined"`
 	Evidence    string   `planner:"quarantined"` // raw tool output — never into the prompt
 	Tool        string   `planner:"quarantined"`
+	// CVSS is an optional CVSS v3.1 vector string (e.g. "CVSS:3.1/AV:N/...");
+	// the report derives a base score from it. Report-facing, not planner-facing.
+	CVSS string `planner:"quarantined"`
 	// Validated is true when a tool DIRECTLY observed the condition (vs an
 	// inference). The report separates validated findings from candidates —
 	// tyto's "confirm before you report" discipline.

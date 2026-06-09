@@ -55,6 +55,24 @@
       "why": "probe for exposed sensitive paths (secrets, VCS metadata, status endpoints)"
     },
     {
+      "id": "http-secret-scan",
+      "name": "Secret scan (response/JS)",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "secretscan",
+      "applies_to": {"service": "http"},
+      "why": "scan response bodies and same-host JS for exposed API keys and secrets"
+    },
+    {
+      "id": "https-secret-scan",
+      "name": "Secret scan (response/JS)",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "secretscan",
+      "applies_to": {"service": "https"},
+      "why": "scan response bodies and same-host JS for exposed API keys and secrets"
+    },
+    {
       "id": "https-content-discovery",
       "name": "HTTPS content discovery",
       "phase": "vuln-analysis",
