@@ -76,10 +76,14 @@ free-solves a kill chain.
 
 > **v0.2 in progress** (branch `v0.2`): methodology task-tree (`internal/methodology`
 > — the planner now selects from an embedded, asset-pruned technique catalog;
-> `tyto methodology` lists it), SARIF 2.1.0 export (`--report-format sarif`), and
-> resumable engagements (`--resume`, JSON state snapshot of assets/findings/
-> completed actions). Still ahead for v0.2: embedded Nuclei + vendored templates,
-> a relational SQLite store, dual CVSS, and a Typst/maroto PDF report.
+> `tyto methodology` lists it), SARIF 2.1.0 export (`--report-format sarif`),
+> resumable engagements (`--resume`, JSON state snapshot), and an expanded
+> built-in detection surface: **portscan, httpprobe, webcheck** (security headers,
+> server-version disclosure, directory listing, **cookie flags**), **webdiscover**
+> (sensitive-path content discovery with a catch-all false-positive guard), and
+> **tlscheck** (deprecated TLS versions + certificate problems). Still ahead for
+> v0.2: embedded Nuclei + vendored templates, a relational SQLite store, dual
+> CVSS, and a Typst/maroto PDF report.
 
 **The all-in-one is the north star, NOT the v1 deliverable.** Draw a line and ship the
 differentiator first (which is mostly Phase-1 work anyway). **v0.1 =**
