@@ -67,6 +67,22 @@ func UserPrompt(eng *engagement.Engagement, st *state.State, tools []string) str
 	b.WriteString("\nCURRENT STATE:\n")
 	b.WriteString(st.Summary())
 
+	// The frontier is computed in Go from discovered service assets; it tells the
+	// model what is worth doing next so it never has to parse raw output to find it.
+	if fr := st.Frontier(); len(fr) > 0 {
+		b.WriteString("\nDISCOVERED SERVICES (suggested next steps):\n")
+		for _, f := range fr {
+			fmt.Fprintf(&b, "  - %s", f.Value)
+			if f.Service != "" {
+				fmt.Fprintf(&b, " (%s)", f.Service)
+			}
+			if len(f.Suggested) > 0 {
+				fmt.Fprintf(&b, " → %s", strings.Join(f.Suggested, "; "))
+			}
+			b.WriteString("\n")
+		}
+	}
+
 	b.WriteString("\n\nWhat are the next 1-3 actions?")
 	return b.String()
 }

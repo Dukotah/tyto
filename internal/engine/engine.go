@@ -137,8 +137,13 @@ func (e *Engine) handle(ctx context.Context, a action.Action) {
 	for _, f := range res.Findings {
 		e.state.AddFinding(f)
 	}
+	for i := range res.Assets {
+		asset := res.Assets[i]
+		e.state.AddAsset(&asset)
+	}
 	e.audit.Record("result", map[string]any{
-		"action": a.ID, "success": res.Success, "output": res.Output, "findings": len(res.Findings),
+		"action": a.ID, "success": res.Success, "output": res.Output,
+		"findings": len(res.Findings), "assets": len(res.Assets),
 	})
 	if res.Output != "" {
 		fmt.Fprintf(e.out, "  DONE  %-12s %-22s — %s\n", a.Tool, a.Target, res.Output)

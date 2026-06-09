@@ -66,6 +66,9 @@ func (t *Tool) Execute(ctx context.Context, a action.Action) (action.Result, err
 	}
 	sort.Ints(open)
 
+	// The host is recorded as an asset once contacted, even with no open ports.
+	res.Assets = append(res.Assets, state.Asset{ID: host, Type: "host", Value: host})
+
 	summary := fmt.Sprintf("host %s: %d/%d scanned ports open", host, len(open), len(ports))
 	if len(open) > 0 {
 		summary += fmt.Sprintf(" %v", open)
@@ -79,6 +82,16 @@ func (t *Tool) Execute(ctx context.Context, a action.Action) (action.Result, err
 			Tool:        t.Name(),
 			FoundAt:     time.Now().UTC(),
 		})
+		// One service asset per open port. service is resolved from OUR port map,
+		// not from any data the target controls, so it is safe for the frontier.
+		for _, port := range open {
+			res.Assets = append(res.Assets, state.Asset{
+				ID:    net.JoinHostPort(host, strconv.Itoa(port)),
+				Type:  "service",
+				Value: net.JoinHostPort(host, strconv.Itoa(port)),
+				Attrs: map[string]string{"port": strconv.Itoa(port), "service": serviceName(port)},
+			})
+		}
 	}
 
 	res.Success = true
@@ -99,6 +112,40 @@ func parsePorts(s string) []int {
 		}
 	}
 	return ports
+}
+
+// serviceName maps a well-known port to a coarse service label. Deterministic
+// and tyto-controlled (never derived from target-supplied banner data), so it is
+// safe to surface to the planner via the frontier. "" means unrecognized.
+func serviceName(port int) string {
+	switch port {
+	case 21:
+		return "ftp"
+	case 22:
+		return "ssh"
+	case 23:
+		return "telnet"
+	case 25:
+		return "smtp"
+	case 53:
+		return "dns"
+	case 80, 8080:
+		return "http"
+	case 110:
+		return "pop3"
+	case 143:
+		return "imap"
+	case 443, 8443:
+		return "https"
+	case 445:
+		return "smb"
+	case 3306:
+		return "mysql"
+	case 3389:
+		return "rdp"
+	default:
+		return ""
+	}
 }
 
 // hostOf strips scheme/path/port from a target to get a dialable host.
