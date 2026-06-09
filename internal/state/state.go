@@ -23,14 +23,15 @@ type Asset struct {
 
 // State is the concurrent-safe knowledge store for one engagement.
 type State struct {
-	mu       sync.RWMutex
-	assets   map[string]*Asset
-	findings []Finding
+	mu          sync.RWMutex
+	assets      map[string]*Asset
+	findings    []Finding
+	findingKeys map[string]bool // dedup: one logical issue = one finding
 }
 
 // New returns an empty State.
 func New() *State {
-	return &State{assets: make(map[string]*Asset)}
+	return &State{assets: make(map[string]*Asset), findingKeys: make(map[string]bool)}
 }
 
 // AddAsset records (or replaces) an asset by ID. It returns true if the ID was
@@ -58,11 +59,20 @@ func (s *State) Assets() []*Asset {
 	return out
 }
 
-// AddFinding records a finding. It returns true (findings are append-only, so
-// every one is novel) to mirror AddAsset and keep progress detection uniform.
+// AddFinding records a finding, deduplicated by (target, title) so re-running a
+// check doesn't inflate the report ("one logical issue = one finding"). It
+// returns true if the finding was new (used for progress detection).
 func (s *State) AddFinding(f Finding) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.findingKeys == nil {
+		s.findingKeys = make(map[string]bool)
+	}
+	key := strings.ToLower(f.Target) + "\x00" + strings.ToLower(f.Title)
+	if s.findingKeys[key] {
+		return false
+	}
+	s.findingKeys[key] = true
 	if f.FoundAt.IsZero() {
 		f.FoundAt = time.Now().UTC()
 	}

@@ -44,5 +44,9 @@ type Finding struct {
 	Description string   `planner:"quarantined"`
 	Evidence    string   `planner:"quarantined"` // raw tool output — never into the prompt
 	Tool        string   `planner:"quarantined"`
-	FoundAt     time.Time
+	// Validated is true when a tool DIRECTLY observed the condition (vs an
+	// inference). The report separates validated findings from candidates —
+	// tyto's "confirm before you report" discipline.
+	Validated bool
+	FoundAt   time.Time
 }
