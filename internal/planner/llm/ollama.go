@@ -23,7 +23,7 @@ func NewOllama(baseURL, model string) *Ollama {
 		baseURL = "http://localhost:11434"
 	}
 	if model == "" {
-		model = "llama3.1"
+		model = "qwen3:14b"
 	}
 	return &Ollama{
 		BaseURL: baseURL,

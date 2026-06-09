@@ -91,16 +91,28 @@ func (e *Engine) Run(ctx context.Context) error {
 // tool, recording every step to the audit log.
 func (e *Engine) handle(ctx context.Context, a action.Action) {
 	dec := e.guard.Evaluate(a)
+	// a.Category / a.Risk are the model's SELF-DECLARED values, recorded for
+	// audit only; the guard gates on authoritative tool metadata.
 	e.audit.Record("decision", map[string]any{
-		"action": a.ID, "tool": a.Tool, "category": a.Category,
-		"target": a.Target, "risk": a.Risk.String(),
-		"allowed": dec.Allowed, "reason": dec.Reason,
+		"action": a.ID, "tool": a.Tool, "declared_category": a.Category,
+		"target": a.Target, "declared_risk": a.Risk.String(),
+		"verdict": dec.Verdict.String(), "allowed": dec.IsAllowed(), "reason": dec.Reason,
 	})
 
-	if !dec.Allowed {
+	switch dec.Verdict {
+	case guard.VerdictDeny:
 		fmt.Fprintf(e.out, "  DENY  %-12s %-22s — %s\n", a.Tool, a.Target, dec.Reason)
 		return
+	case guard.VerdictRequireApproval:
+		// Human-approval UX lands in a later phase; until then, fail safe by not
+		// executing and recording that approval was required.
+		fmt.Fprintf(e.out, "  HOLD  %-12s %-22s — needs approval: %s\n", a.Tool, a.Target, dec.Reason)
+		e.audit.Record("approval_required", map[string]any{
+			"action": a.ID, "tool": a.Tool, "target": a.Target, "reason": dec.Reason,
+		})
+		return
 	}
+	// VerdictAllow falls through.
 
 	if e.opts.DryRun {
 		fmt.Fprintf(e.out, "  ALLOW %-12s %-22s [dry-run] %s\n", a.Tool, a.Target, a.Rationale)

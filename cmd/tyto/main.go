@@ -74,6 +74,17 @@ func defaultRegistry() *tool.Registry {
 	return r
 }
 
+// toolSnapshot builds the immutable, read-only authority the Scope Guard gates
+// on: each tool's authoritative category + risk ceiling, with no access to
+// Execute. The guard never trusts model-supplied risk/category.
+func toolSnapshot(r *tool.Registry) map[string]guard.ToolMeta {
+	m := make(map[string]guard.ToolMeta)
+	for _, t := range r.All() {
+		m[t.Name()] = guard.ToolMeta{Category: t.Category(), MaxRisk: t.MaxRisk()}
+	}
+	return m
+}
+
 func cmdTools() {
 	r := defaultRegistry()
 	fmt.Println("Registered tools:")
@@ -111,7 +122,7 @@ func cmdRun(args []string) {
 	engPath := fs.String("engagement", "", "path to engagement YAML (required)")
 	dryRun := fs.Bool("dry-run", false, "plan and guard only; never execute tools")
 	plannerKind := fs.String("planner", "", "planner backend: ollama|mock (default: ollama, or mock with --dry-run)")
-	model := fs.String("model", "llama3.1", "ollama model name")
+	model := fs.String("model", "qwen3:14b", "ollama model name")
 	ollamaURL := fs.String("ollama-url", "http://localhost:11434", "ollama base URL")
 	cycles := fs.Int("cycles", 1, "max plan/act cycles")
 	auditPath := fs.String("audit", "", "audit log path (default: <engagement-id>.audit.jsonl)")
@@ -156,11 +167,12 @@ func cmdRun(args []string) {
 	defer func() { _ = closeAudit() }()
 
 	st := state.New()
+	reg := defaultRegistry()
 	eg := engine.New(
 		eng,
-		guard.New(eng),
+		guard.New(eng, toolSnapshot(reg)),
 		planner.New(client),
-		defaultRegistry(),
+		reg,
 		st,
 		alog,
 		os.Stdout,

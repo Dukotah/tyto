@@ -27,7 +27,7 @@ func New() *Tool { return &Tool{} }
 func (t *Tool) Name() string { return "portscan" }
 
 // Category implements tool.Tool.
-func (t *Tool) Category() string { return "scan" }
+func (t *Tool) Category() action.Category { return action.CategoryScan }
 
 // MaxRisk implements tool.Tool.
 func (t *Tool) MaxRisk() action.RiskLevel { return action.RiskMedium }

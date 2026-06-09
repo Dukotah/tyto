@@ -59,6 +59,18 @@ func (r RoE) validate() error {
 	if _, err := r.MaxRiskLevel(); err != nil {
 		return fmt.Errorf("rules_of_engagement.max_risk: %w", err)
 	}
+	// Categories must name members of the closed taxonomy so a typo fails CLOSED
+	// at load instead of silently never-matching a forbidden-list entry.
+	for _, c := range r.AllowedCategories {
+		if _, err := action.ParseCategory(c); err != nil {
+			return fmt.Errorf("rules_of_engagement.allowed_categories: %w", err)
+		}
+	}
+	for _, c := range r.ForbiddenCategories {
+		if _, err := action.ParseCategory(c); err != nil {
+			return fmt.Errorf("rules_of_engagement.forbidden_categories: %w", err)
+		}
+	}
 	for _, w := range r.TimeWindows {
 		if _, err := parseHM(w.Start); err != nil {
 			return fmt.Errorf("rules_of_engagement.time_windows.start: %w", err)
