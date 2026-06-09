@@ -6,6 +6,7 @@ import (
 	"github.com/dukotah/tyto/internal/tool/builtin/httpprobe"
 	"github.com/dukotah/tyto/internal/tool/builtin/portscan"
 	"github.com/dukotah/tyto/internal/tool/builtin/webcheck"
+	"github.com/dukotah/tyto/internal/tool/builtin/webdiscover"
 )
 
 // defaultRegistry wires the built-in tool adapters.
@@ -14,6 +15,7 @@ func defaultRegistry() *tool.Registry {
 	r.MustRegister(portscan.New())
 	r.MustRegister(httpprobe.New())
 	r.MustRegister(webcheck.New())
+	r.MustRegister(webdiscover.New())
 	return r
 }
 

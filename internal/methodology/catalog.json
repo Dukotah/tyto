@@ -46,6 +46,24 @@
       "why": "check the HTTPS service for missing security headers and disclosure"
     },
     {
+      "id": "http-content-discovery",
+      "name": "HTTP content discovery",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "webdiscover",
+      "applies_to": {"service": "http"},
+      "why": "probe for exposed sensitive paths (secrets, VCS metadata, status endpoints)"
+    },
+    {
+      "id": "https-content-discovery",
+      "name": "HTTPS content discovery",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "webdiscover",
+      "applies_to": {"service": "https"},
+      "why": "probe for exposed sensitive paths (secrets, VCS metadata, status endpoints)"
+    },
+    {
       "id": "ssh-enum",
       "name": "SSH version and auth enumeration",
       "phase": "scanning",

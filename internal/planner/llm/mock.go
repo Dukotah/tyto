@@ -37,6 +37,7 @@ func NewScriptedMock(targets []string) *Mock {
 		web = append(web,
 			fmt.Sprintf(`{"tool":"httpprobe","category":"recon","target":%q,"risk":"low","params":{},"rationale":"fingerprint http"}`, t),
 			fmt.Sprintf(`{"tool":"webcheck","category":"scan","target":%q,"risk":"low","params":{},"rationale":"safe web checks"}`, t),
+			fmt.Sprintf(`{"tool":"webdiscover","category":"scan","target":%q,"risk":"low","params":{},"rationale":"sensitive-path discovery"}`, t),
 		)
 	}
 	return &Mock{Responses: []string{
