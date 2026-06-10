@@ -277,9 +277,12 @@ where "model-unbypassable guard" becomes true instead of aspirational.*
 ## Phase 3 — Vuln detection + client-ready reporting — 🚧
 > **Status (June 2026):** reporting is largely ✅ — SARIF 2.1.0, dual-axis CVSS v3.1
 > (`internal/cvss`, scored into findings), HTML/print-to-PDF + Markdown + JSON, native
-> dedup/grouping, and validate-before-report (validated/candidate split). **Not done —
-> the big gap:** embedded **Nuclei** + vendored templates, dependency/version **CVE feeds**
-> (Trivy / FKIE NVD), the `tyto feeds` bundler, and semantic recall.
+> dedup/grouping, and validate-before-report (validated/candidate split). Detection breadth ✅
+> via a NATIVE template engine — `internal/templates` runs Nuclei-style YAML templates with an
+> embedded, operator-extensible starter pack (`templatescan`), rather than embedding the heavy
+> nuclei/v3 lib (keeps single-binary/offline). **Still not done:** a much larger template pack
+> (or real nuclei-templates ingestion), dependency/version **CVE feeds** (Trivy / FKIE NVD), the
+> `tyto feeds` bundler, and semantic recall.
 *Where tyto starts competing with Nessus on detection breadth. (Burp-class web-active
 testing is Phase 4 — don't claim it here.)*
 - ⬜ **Embed Nuclei v3** (`nuclei/v3/lib`) + **vendored nuclei-templates** snapshot +
