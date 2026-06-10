@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -258,8 +259,11 @@ func (c *console) plannerClient(req runReq, eng *engagement.Engagement) (llm.Cli
 		}
 		return llm.NewScriptedMock(targets), nil
 	case "ollama":
-		ram, derr := sysinfo.TotalRAMBytes()
-		model := llm.DefaultModel(ram, derr == nil).Model
+		model := strings.TrimSpace(os.Getenv("TYTO_MODEL"))
+		if model == "" {
+			ram, derr := sysinfo.TotalRAMBytes()
+			model = llm.DefaultModel(ram, derr == nil).Model
+		}
 		return llm.NewOllama(c.ollamaURL, model), nil
 	default:
 		return nil, fmt.Errorf("unknown planner %q (want scripted|mock|ollama)", kind)
