@@ -40,6 +40,10 @@ func NewScriptedMock(targets []string) *Mock {
 			fmt.Sprintf(`{"tool":"webdiscover","category":"scan","target":%q,"risk":"low","params":{},"rationale":"sensitive-path discovery"}`, t),
 			fmt.Sprintf(`{"tool":"webcrawl","category":"recon","target":%q,"risk":"low","params":{},"rationale":"discover endpoints"}`, t),
 			fmt.Sprintf(`{"tool":"webinject","category":"scan","target":%q,"risk":"medium","params":{},"rationale":"injection testing"}`, t),
+			// Exploitation tier — the Scope Guard runs these only if the engagement
+			// is authorized for exploit/high-risk on the target.
+			fmt.Sprintf(`{"tool":"sqliexploit","category":"exploit","target":%q,"risk":"high","params":{},"rationale":"extract data to prove SQLi impact"}`, t),
+			fmt.Sprintf(`{"tool":"cmdexec","category":"exploit","target":%q,"risk":"high","params":{},"rationale":"execute commands to prove RCE impact"}`, t),
 		)
 	}
 	return &Mock{Responses: []string{
