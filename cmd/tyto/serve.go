@@ -45,6 +45,8 @@ type console struct {
 	// pending holds approval channels keyed by action ID while a run is paused
 	// awaiting an operator decision (human-in-the-loop mode).
 	pending map[string]chan bool
+	// runCancel cancels the in-progress run (used by /api/stop).
+	runCancel context.CancelFunc
 }
 
 func newServeCmd() *cobra.Command {
@@ -69,7 +71,9 @@ func newServeCmd() *cobra.Command {
 			mux.HandleFunc("/api/tools", c.handleTools)
 			mux.HandleFunc("/api/methodology", c.handleMethodology)
 			mux.HandleFunc("/api/run", c.handleRun)
+			mux.HandleFunc("/api/stop", c.handleStop)
 			mux.HandleFunc("/api/approve", c.handleApprove)
+			mux.HandleFunc("/api/chat", c.handleChat)
 			mux.HandleFunc("/api/events", c.handleEvents)
 			mux.HandleFunc("/api/findings", c.handleFindings)
 			mux.HandleFunc("/api/audit", c.handleAudit)
@@ -237,10 +241,11 @@ func (c *console) handleRun(w http.ResponseWriter, r *http.Request) {
 		cycles = 3
 	}
 	st := state.New()
-	c.eng, c.st, c.auditBuf, c.history, c.running = eng, st, &safeBuffer{}, nil, true
+	ctx, cancel := context.WithCancel(context.Background())
+	c.eng, c.st, c.auditBuf, c.history, c.running, c.runCancel = eng, st, &safeBuffer{}, nil, true, cancel
 	c.mu.Unlock()
 
-	go c.runEngagement(eng, st, client, cycles, req.DryRun, req.RequireApproval)
+	go c.runEngagement(ctx, eng, st, client, cycles, req.DryRun, req.RequireApproval)
 	writeJSON(w, map[string]any{"ok": true})
 }
 
@@ -270,10 +275,11 @@ func (c *console) plannerClient(req runReq, eng *engagement.Engagement) (llm.Cli
 	}
 }
 
-func (c *console) runEngagement(eng *engagement.Engagement, st *state.State, client llm.Client, cycles int, dryRun, requireApproval bool) {
+func (c *console) runEngagement(ctx context.Context, eng *engagement.Engagement, st *state.State, client llm.Client, cycles int, dryRun, requireApproval bool) {
 	defer func() {
 		c.mu.Lock()
 		c.running = false
+		c.runCancel = nil
 		c.mu.Unlock()
 	}()
 
@@ -295,11 +301,119 @@ func (c *console) runEngagement(eng *engagement.Engagement, st *state.State, cli
 			RequireApproval: requireApproval, Approver: c.approve,
 		})
 
-	// Detached context: the run continues even if the launching browser tab closes.
-	if err := eg.Run(context.Background()); err != nil {
+	// ctx is cancelable via /api/stop; the run otherwise continues even if the
+	// launching browser tab closes.
+	if err := eg.Run(ctx); err != nil {
 		c.broadcast(engine.Event{Kind: "error", Message: err.Error()})
 		c.broadcast(engine.Event{Kind: "done"})
 	}
+}
+
+// handleStop cancels an in-progress run.
+func (c *console) handleStop(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	c.mu.Lock()
+	cancel, running := c.runCancel, c.running
+	c.mu.Unlock()
+	if running && cancel != nil {
+		cancel()
+		c.broadcast(engine.Event{Kind: "log", Message: "operator requested stop", Time: time.Now().UTC()})
+		writeJSON(w, map[string]any{"ok": true})
+		return
+	}
+	writeJSON(w, map[string]any{"ok": false, "error": "no run in progress"})
+}
+
+// handleChat is an engagement-aware assistant: the operator can ask about
+// findings and next steps in plain language. It feeds the LOCAL model a safe
+// projection of the live engagement state (finding titles/severities/targets +
+// asset/cred counts — never raw evidence/secrets), so answers reflect what the
+// run has actually found, even mid-engagement.
+func (c *console) handleChat(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Message string `json:"message"`
+		History []struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		} `json:"history"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Message) == "" {
+		writeJSON(w, map[string]any{"error": "empty or malformed message"})
+		return
+	}
+
+	c.mu.Lock()
+	eng, st, url := c.eng, c.st, c.ollamaURL
+	c.mu.Unlock()
+
+	model := strings.TrimSpace(os.Getenv("TYTO_MODEL"))
+	if model == "" {
+		model = "qwen3:14b"
+	}
+	client := llm.NewOllama(url, model)
+
+	system := "You are tyto's assistant for an AUTHORIZED penetration-testing engagement. " +
+		"Help the operator understand findings and decide next steps. Stay strictly within the " +
+		"authorized scope — never suggest testing out-of-scope or unauthorized targets. Be concise " +
+		"and practical.\n\n" + chatContext(eng, st)
+
+	var b strings.Builder
+	n := len(req.History)
+	if n > 12 {
+		req.History = req.History[n-12:] // bound the context to the last turns
+	}
+	for _, m := range req.History {
+		label := "Operator"
+		if m.Role == "assistant" {
+			label = "Assistant"
+		}
+		fmt.Fprintf(&b, "%s: %s\n", label, m.Content)
+	}
+	fmt.Fprintf(&b, "Operator: %s\nAssistant:", req.Message)
+
+	ctx, cancel := context.WithTimeout(r.Context(), 240*time.Second)
+	defer cancel()
+	reply, err := client.Generate(ctx, system, b.String())
+	if err != nil {
+		writeJSON(w, map[string]any{"error": "chat: " + err.Error()})
+		return
+	}
+	writeJSON(w, map[string]any{"reply": strings.TrimSpace(reply)})
+}
+
+// chatContext is the safe, bounded projection of engagement state fed to the
+// chat model (no raw evidence/secrets).
+func chatContext(eng *engagement.Engagement, st *state.State) string {
+	var b strings.Builder
+	if eng != nil {
+		var scope []string
+		for _, t := range eng.Scope.InScope {
+			scope = append(scope, t.Value)
+		}
+		fmt.Fprintf(&b, "Current engagement: %s for %s. In-scope: %s.\n", eng.ID, eng.Client, strings.Join(scope, ", "))
+	} else {
+		b.WriteString("No engagement is running yet — to start one, tell the operator to use the Run tab.\n")
+	}
+	if st != nil {
+		fs := st.Findings()
+		fmt.Fprintf(&b, "Findings so far: %d.\n", len(fs))
+		for i, f := range fs {
+			if i >= 25 {
+				fmt.Fprintf(&b, "...and %d more.\n", len(fs)-25)
+				break
+			}
+			fmt.Fprintf(&b, "- [%s] %s (%s)\n", f.Severity.String(), f.Title, f.Target)
+		}
+		fmt.Fprintf(&b, "Assets discovered: %d. Recovered credentials: %d.\n", len(st.Assets()), len(st.Credentials()))
+	}
+	return b.String()
 }
 
 // --- read APIs -------------------------------------------------------------
@@ -307,13 +421,31 @@ func (c *console) runEngagement(eng *engagement.Engagement, st *state.State, cli
 func (c *console) handleStatus(w http.ResponseWriter, _ *http.Request) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	resp := map[string]any{"running": c.running, "engagement": nil, "findings": 0}
+	resp := map[string]any{
+		"running": c.running, "engagement": nil, "findings": 0,
+		"bySeverity": map[string]int{}, "assets": 0, "actions": 0, "credentials": 0,
+	}
 	if c.eng != nil {
 		resp["engagement"] = map[string]string{"id": c.eng.ID, "client": c.eng.Client}
 	}
 	if c.st != nil {
-		resp["findings"] = len(c.st.Findings())
+		fs := c.st.Findings()
+		resp["findings"] = len(fs)
+		sev := map[string]int{}
+		for _, f := range fs {
+			sev[f.Severity.String()]++
+		}
+		resp["bySeverity"] = sev
+		resp["assets"] = len(c.st.Assets())
+		resp["credentials"] = len(c.st.Credentials())
 	}
+	actions := 0
+	for _, ev := range c.history {
+		if ev.Kind == "action" {
+			actions++
+		}
+	}
+	resp["actions"] = actions
 	writeJSON(w, resp)
 }
 
