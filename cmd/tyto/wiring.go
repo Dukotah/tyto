@@ -11,6 +11,7 @@ import (
 	"github.com/dukotah/tyto/internal/tool/builtin/ftpcheck"
 	"github.com/dukotah/tyto/internal/tool/builtin/httpmethods"
 	"github.com/dukotah/tyto/internal/tool/builtin/httpprobe"
+	"github.com/dukotah/tyto/internal/tool/builtin/jwtcheck"
 	"github.com/dukotah/tyto/internal/tool/builtin/portscan"
 	"github.com/dukotah/tyto/internal/tool/builtin/redircheck"
 	"github.com/dukotah/tyto/internal/tool/builtin/secretscan"
@@ -47,6 +48,7 @@ func defaultRegistry() *tool.Registry {
 	r.MustRegister(wafdetect.New())
 	r.MustRegister(subtakeover.New())
 	r.MustRegister(templatescan.New())
+	r.MustRegister(jwtcheck.New())
 	// Exploitation tier (exploit-category, RiskHigh) — the Scope Guard only lets
 	// these run with a verified authorization grant for the target.
 	r.MustRegister(cmdexec.New())

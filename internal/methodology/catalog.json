@@ -82,6 +82,24 @@
       "why": "probe for exposed sensitive paths (secrets, VCS metadata, status endpoints)"
     },
     {
+      "id": "http-jwt",
+      "name": "JWT analysis",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "jwtcheck",
+      "applies_to": {"service": "http"},
+      "why": "find exposed JWTs and check for alg:none, weak signing secrets, and sensitive claims"
+    },
+    {
+      "id": "https-jwt",
+      "name": "JWT analysis",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "jwtcheck",
+      "applies_to": {"service": "https"},
+      "why": "find exposed JWTs and check for alg:none, weak signing secrets, and sensitive claims"
+    },
+    {
       "id": "http-secret-scan",
       "name": "Secret scan (response/JS)",
       "phase": "vuln-analysis",

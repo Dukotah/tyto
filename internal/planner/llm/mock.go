@@ -39,6 +39,7 @@ func NewScriptedMock(targets []string) *Mock {
 			fmt.Sprintf(`{"tool":"webcheck","category":"scan","target":%q,"risk":"low","params":{},"rationale":"safe web checks"}`, t),
 			fmt.Sprintf(`{"tool":"webdiscover","category":"scan","target":%q,"risk":"low","params":{},"rationale":"sensitive-path discovery"}`, t),
 			fmt.Sprintf(`{"tool":"secretscan","category":"scan","target":%q,"risk":"low","params":{},"rationale":"scan for exposed secrets"}`, t),
+			fmt.Sprintf(`{"tool":"jwtcheck","category":"scan","target":%q,"risk":"low","params":{},"rationale":"analyze JWTs"}`, t),
 			fmt.Sprintf(`{"tool":"templatescan","category":"scan","target":%q,"risk":"low","params":{},"rationale":"run detection templates"}`, t),
 			fmt.Sprintf(`{"tool":"webcrawl","category":"recon","target":%q,"risk":"low","params":{},"rationale":"discover endpoints"}`, t),
 			fmt.Sprintf(`{"tool":"webinject","category":"scan","target":%q,"risk":"medium","params":{},"rationale":"injection testing"}`, t),
