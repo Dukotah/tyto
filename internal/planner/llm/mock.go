@@ -45,7 +45,9 @@ func NewScriptedMock(targets []string) *Mock {
 			fmt.Sprintf(`{"tool":"jwtcheck","category":"scan","target":%q,"risk":"low","params":{},"rationale":"analyze JWTs"}`, t),
 			fmt.Sprintf(`{"tool":"templatescan","category":"scan","target":%q,"risk":"low","params":{},"rationale":"run detection templates"}`, t),
 			fmt.Sprintf(`{"tool":"webcrawl","category":"recon","target":%q,"risk":"low","params":{},"rationale":"discover endpoints"}`, t),
+			fmt.Sprintf(`{"tool":"dirfuzz","category":"scan","target":%q,"risk":"low","params":{},"rationale":"content discovery"}`, t),
 			fmt.Sprintf(`{"tool":"webinject","category":"scan","target":%q,"risk":"medium","params":{},"rationale":"injection testing"}`, t),
+			fmt.Sprintf(`{"tool":"ssti","category":"scan","target":%q,"risk":"medium","params":{},"rationale":"template injection testing"}`, t),
 			// Exploitation tier — the Scope Guard runs these only if the engagement
 			// is authorized for exploit/high-risk on the target.
 			fmt.Sprintf(`{"tool":"sqliexploit","category":"exploit","target":%q,"risk":"high","params":{},"rationale":"extract data to prove SQLi impact"}`, t),

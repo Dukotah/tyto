@@ -190,6 +190,33 @@
       "why": "follow links and forms to discover parameterized endpoints to test"
     },
     {
+      "id": "http-dirfuzz",
+      "name": "Content/endpoint discovery (wordlist)",
+      "phase": "scanning",
+      "category": "scan",
+      "tool": "dirfuzz",
+      "applies_to": {"service": "http"},
+      "why": "brute a wordlist of common paths to discover hidden endpoints and files"
+    },
+    {
+      "id": "https-dirfuzz",
+      "name": "Content/endpoint discovery (wordlist)",
+      "phase": "scanning",
+      "category": "scan",
+      "tool": "dirfuzz",
+      "applies_to": {"service": "https"},
+      "why": "brute a wordlist of common paths to discover hidden endpoints and files"
+    },
+    {
+      "id": "endpoint-ssti",
+      "name": "Server-Side Template Injection testing",
+      "phase": "exploitation",
+      "category": "scan",
+      "tool": "ssti",
+      "applies_to": {"asset_type": "endpoint"},
+      "why": "test a parameterized endpoint for SSTI via arithmetic-evaluation payloads"
+    },
+    {
       "id": "endpoint-injection",
       "name": "Injection testing (XSS / SQLi / traversal / cmdi)",
       "phase": "exploitation",
