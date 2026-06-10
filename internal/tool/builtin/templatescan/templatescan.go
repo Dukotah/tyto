@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -99,14 +98,9 @@ func templatesDir(a action.Action) string {
 	if d := strings.TrimSpace(os.Getenv("TYTO_TEMPLATES")); d != "" {
 		return d
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	def := filepath.Join(home, ".tyto", "templates")
-	if info, err := os.Stat(def); err == nil && info.IsDir() {
-		return def
-	}
+	// The large on-disk pack (e.g. the cloned nuclei-templates) is OPT-IN via the
+	// param or TYTO_TEMPLATES — auto-loading thousands of templates would make every
+	// run fire ~10k requests. Default to the fast embedded pack only.
 	return ""
 }
 
