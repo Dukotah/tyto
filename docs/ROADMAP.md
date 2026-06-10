@@ -233,7 +233,12 @@ where "model-unbypassable guard" becomes true instead of aspirational.*
   with methodology-alignment once the task tree exists (Phase 2).
 - ✅ **Name resolved → `tyto`** (module `github.com/dukotah/tyto`, binary `tyto`).
 
-## Phase 2 — Real recon/scan, the methodology brain & the data model — ⬜
+## Phase 2 — Real recon/scan, the methodology brain & the data model — 🚧
+> **Status (June 2026):** methodology task-tree ✅ (`internal/methodology`, guard-pruned
+> frontier); native recon/scan ✅ (`portscan`, `httpprobe`, `webcrawl`, `dnsenum` — native,
+> not the naabu/ProjectDiscovery tools); finding dedup ✅ (light, by target+title);
+> resumable engagements ✅ via a JSON state snapshot (`internal/store`). **Not done:** a
+> relational SQLite store and the provisioned/recovered **credential data model**.
 - ⬜ **Scan layer (pure-Go):** harden the native TCP-connect scanner (worker pool,
   ranges, banner grab) → embed `naabu` (CONNECT, `CGO_ENABLED=0`) +
   `praetorian-inc/fingerprintx`. *(Pin the ProjectDiscovery module tree together;
@@ -269,7 +274,12 @@ where "model-unbypassable guard" becomes true instead of aspirational.*
   bodies run through a quarantined step that emits **typed assets AND findings**; the
   planner sees only those, never raw output.
 
-## Phase 3 — Vuln detection + client-ready reporting — ⬜
+## Phase 3 — Vuln detection + client-ready reporting — 🚧
+> **Status (June 2026):** reporting is largely ✅ — SARIF 2.1.0, dual-axis CVSS v3.1
+> (`internal/cvss`, scored into findings), HTML/print-to-PDF + Markdown + JSON, native
+> dedup/grouping, and validate-before-report (validated/candidate split). **Not done —
+> the big gap:** embedded **Nuclei** + vendored templates, dependency/version **CVE feeds**
+> (Trivy / FKIE NVD), the `tyto feeds` bundler, and semantic recall.
 *Where tyto starts competing with Nessus on detection breadth. (Burp-class web-active
 testing is Phase 4 — don't claim it here.)*
 - ⬜ **Embed Nuclei v3** (`nuclei/v3/lib`) + **vendored nuclei-templates** snapshot +
@@ -292,7 +302,13 @@ testing is Phase 4 — don't claim it here.)*
 - ⬜ **Validate-before-report:** confirm exploitability with a real check before a
   finding is reported.
 
-## Phase 4 — Web depth + OS-level "hardened mode" — ⬜
+## Phase 4 — Web depth + OS-level "hardened mode" — 🚧
+> **Status (June 2026):** web-active testing ✅ but built NATIVELY (own tools:
+> `webcheck`/`webdiscover`/`webinject`/`corscheck`/`redircheck`/`httpmethods`/`tlscheck`/
+> `secretscan`) rather than shelling out to ZAP/ffuf/sqlmap; an operational **web console**
+> ✅ (`tyto serve` — beyond the planned passive TUI: drive + live-monitor runs in a browser).
+> **Not done:** OS-level **hardened mode** (default-deny egress proxy + bubblewrap/gVisor) and
+> the interactive per-action approval UX (we chose auto-run-within-authorized-scope instead).
 - ⬜ **Web active scanning:** OWASP ZAP as a managed **sidecar daemon** (`zap-api-go`,
   local `api.key`); shell-out adapters for `ffuf`, **`sqlmap` (GPLv2,** detect-only by
   default**)**, `arjun`. **Per-mode** risk gating enforced by the guard's per-param
@@ -324,7 +340,12 @@ spray/relay/PtH defer behind the exploitation-grade gate. All shell-out/adapter 
   RiskHigh**, gated like exploitation (authorization artifact + human approval +
   per-target rate-limit + lockout-awareness). *(Not pure-Go; documented optional tier.)*
 
-## Phase 6 — Offensive depth (gated, post-1.0) — ⬜
+## Phase 6 — Offensive depth (gated, post-1.0) — 🚧
+> **Status (June 2026):** a NATIVE exploitation tier landed early — `cmdexec` (proves RCE by
+> executing commands and capturing output) and `sqliexploit` (error-based SQLi data
+> extraction). Both are exploit-category/RiskHigh and run ONLY with a verified Ed25519
+> authorization grant for the target (auto-run within authorized scope). **Not done:** the
+> heavy frameworks (Metasploit/Sliver), credential attacks (hydra/hashcat), and pivoting.
 *Highest risk, build last, **default OFF**. The AI may PROPOSE; the deterministic
 guard + human sign-off APPROVE. Break the lethal trifecta (untrusted input + exploit
 capability + egress).*
