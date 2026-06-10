@@ -11,9 +11,11 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/dukotah/tyto/internal/action"
 	"github.com/dukotah/tyto/internal/audit"
 	"github.com/dukotah/tyto/internal/engagement"
 	"github.com/dukotah/tyto/internal/engine"
@@ -39,10 +41,13 @@ type console struct {
 	subs      map[chan engine.Event]struct{}
 	history   []engine.Event
 	ollamaURL string
+	// pending holds approval channels keyed by action ID while a run is paused
+	// awaiting an operator decision (human-in-the-loop mode).
+	pending map[string]chan bool
 }
 
 func newServeCmd() *cobra.Command {
-	c := &console{subs: map[chan engine.Event]struct{}{}}
+	c := &console{subs: map[chan engine.Event]struct{}{}, pending: map[string]chan bool{}}
 	var addr string
 	cmd := &cobra.Command{
 		Use:   "serve",
@@ -63,6 +68,7 @@ func newServeCmd() *cobra.Command {
 			mux.HandleFunc("/api/tools", c.handleTools)
 			mux.HandleFunc("/api/methodology", c.handleMethodology)
 			mux.HandleFunc("/api/run", c.handleRun)
+			mux.HandleFunc("/api/approve", c.handleApprove)
 			mux.HandleFunc("/api/events", c.handleEvents)
 			mux.HandleFunc("/api/findings", c.handleFindings)
 			mux.HandleFunc("/api/audit", c.handleAudit)
@@ -132,11 +138,60 @@ func (c *console) handleEvents(w http.ResponseWriter, r *http.Request) {
 // --- run orchestration -----------------------------------------------------
 
 type runReq struct {
-	Engagement string `json:"engagement"`
-	Planner    string `json:"planner"`
-	Cycles     int    `json:"cycles"`
-	DryRun     bool   `json:"dryRun"`
-	Objective  string `json:"objective"`
+	Engagement      string `json:"engagement"`
+	Planner         string `json:"planner"`
+	Cycles          int    `json:"cycles"`
+	DryRun          bool   `json:"dryRun"`
+	Objective       string `json:"objective"`
+	RequireApproval bool   `json:"requireApproval"`
+}
+
+// approve blocks until the operator approves/denies the action via /api/approve
+// (or the run context is cancelled). It's the engine's Approver in HITL mode.
+func (c *console) approve(ctx context.Context, a action.Action) (bool, error) {
+	ch := make(chan bool, 1)
+	c.mu.Lock()
+	c.pending[a.ID] = ch
+	c.mu.Unlock()
+	defer func() { c.mu.Lock(); delete(c.pending, a.ID); c.mu.Unlock() }()
+
+	c.broadcast(engine.Event{
+		Kind: "approval_required", Action: a.ID, Tool: a.Tool, Target: a.Target,
+		Message: a.Rationale, Time: time.Now().UTC(),
+	})
+	select {
+	case <-ctx.Done():
+		return false, ctx.Err()
+	case ok := <-ch:
+		return ok, nil
+	}
+}
+
+func (c *console) handleApprove(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Action   string `json:"action"`
+		Approved bool   `json:"approved"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, map[string]any{"error": "bad request"})
+		return
+	}
+	c.mu.Lock()
+	ch := c.pending[req.Action]
+	c.mu.Unlock()
+	if ch == nil {
+		writeJSON(w, map[string]any{"error": "no pending approval for that action"})
+		return
+	}
+	select {
+	case ch <- req.Approved:
+	default:
+	}
+	writeJSON(w, map[string]any{"ok": true})
 }
 
 func (c *console) handleRun(w http.ResponseWriter, r *http.Request) {
@@ -184,7 +239,7 @@ func (c *console) handleRun(w http.ResponseWriter, r *http.Request) {
 	c.eng, c.st, c.auditBuf, c.history, c.running = eng, st, &safeBuffer{}, nil, true
 	c.mu.Unlock()
 
-	go c.runEngagement(eng, st, client, cycles, req.DryRun)
+	go c.runEngagement(eng, st, client, cycles, req.DryRun, req.RequireApproval)
 	writeJSON(w, map[string]any{"ok": true})
 }
 
@@ -211,7 +266,7 @@ func (c *console) plannerClient(req runReq, eng *engagement.Engagement) (llm.Cli
 	}
 }
 
-func (c *console) runEngagement(eng *engagement.Engagement, st *state.State, client llm.Client, cycles int, dryRun bool) {
+func (c *console) runEngagement(eng *engagement.Engagement, st *state.State, client llm.Client, cycles int, dryRun, requireApproval bool) {
 	defer func() {
 		c.mu.Lock()
 		c.running = false
@@ -231,7 +286,10 @@ func (c *console) runEngagement(eng *engagement.Engagement, st *state.State, cli
 	})
 
 	eg := engine.New(eng, guard.New(eng, toolSnapshot(reg), grants), planner.New(client),
-		reg, st, alog, io.Discard, engine.Options{DryRun: dryRun, MaxCycles: cycles, OnEvent: c.broadcast})
+		reg, st, alog, io.Discard, engine.Options{
+			DryRun: dryRun, MaxCycles: cycles, OnEvent: c.broadcast,
+			RequireApproval: requireApproval, Approver: c.approve,
+		})
 
 	// Detached context: the run continues even if the launching browser tab closes.
 	if err := eg.Run(context.Background()); err != nil {

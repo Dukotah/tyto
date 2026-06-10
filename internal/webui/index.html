@@ -96,6 +96,19 @@
   .inline-err{color:var(--high); font-size:12px; margin:8px 0}
   .counter{color:var(--accent); font-weight:bold}
   .validated{color:var(--ok)} .candidate{color:var(--muted)}
+  .approval{
+    margin:8px 0; padding:10px 12px; border:1px solid var(--hold);
+    border-left:4px solid var(--hold); border-radius:6px;
+    background:rgba(255,133,27,.08);
+  }
+  .approval .ttl{color:var(--hold); font-weight:bold}
+  .approval .rationale{color:var(--text); margin:5px 0 9px; white-space:pre-wrap}
+  .approval .actions{display:flex; gap:8px; align-items:center}
+  .approval button.btn.approve{background:var(--ok); color:#0d1117}
+  .approval button.btn.deny{background:var(--deny); color:#fff}
+  .approval .result{color:var(--muted)}
+  .approval .result.ok{color:var(--ok)} .approval .result.no{color:var(--deny)}
+  .approval .result.err{color:var(--high)}
 </style>
 </head>
 <body>
@@ -145,6 +158,10 @@
           <div class="field row">
             <input type="checkbox" id="dryRun">
             <label for="dryRun" style="margin:0">Dry run</label>
+          </div>
+          <div class="field row">
+            <input type="checkbox" id="requireApproval">
+            <label for="requireApproval" style="margin:0">Require approval (pause on high-risk actions)</label>
           </div>
           <button type="submit" class="btn" id="startBtn">Start run</button>
           <span style="margin-left:14px" class="muted">findings seen: <span class="counter" id="liveCount">0</span></span>
@@ -363,6 +380,10 @@ function renderEvent(ev){
       box.appendChild(line);
       break;
     }
+    case "approval_required": {
+      renderApproval(ev);
+      break;
+    }
     case "error": {
       logLine("err", time + "ERROR: " + (ev.message || ev.reason || "unknown error"));
       break;
@@ -387,6 +408,66 @@ function renderEvent(ev){
       break;
     }
   }
+  box.scrollTop = box.scrollHeight;
+}
+
+function setAwaiting(on){
+  const txt = $("statusText");
+  if (on) txt.textContent = "running · awaiting approval";
+  else if (txt.textContent.indexOf("awaiting approval") !== -1) txt.textContent = "running";
+}
+
+function renderApproval(ev){
+  const box = $("log");
+  const time = ev.time ? "[" + ev.time + "] " : "";
+  const tool = ev.tool || "?";
+  const target = ev.target || "?";
+
+  const wrap = el("div", "approval");
+
+  // title — all server strings via textContent (el sets textContent)
+  const ttl = el("div", "ttl");
+  ttl.appendChild(document.createTextNode(time + "⚠ Approval needed — "));
+  ttl.appendChild(document.createTextNode(tool + " on " + target));
+  wrap.appendChild(ttl);
+
+  // rationale (AI message) on its own line
+  if (ev.message) wrap.appendChild(el("div", "rationale", ev.message));
+
+  const actions = el("div", "actions");
+  const approveBtn = el("button", "btn approve", "Approve");
+  const denyBtn = el("button", "btn deny", "Deny");
+  approveBtn.type = "button";
+  denyBtn.type = "button";
+  actions.appendChild(approveBtn);
+  actions.appendChild(denyBtn);
+  wrap.appendChild(actions);
+
+  setAwaiting(true);
+
+  const decide = async (approved) => {
+    approveBtn.disabled = true;
+    denyBtn.disabled = true;
+    setAwaiting(false);
+    try {
+      const r = await fetch("/api/approve", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({action: ev.action, approved: approved})
+      });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const status = el("div", "result " + (approved ? "ok" : "no"),
+        approved ? "✓ approved" : "✗ denied");
+      wrap.replaceChild(status, actions);
+    } catch (err) {
+      const status = el("div", "result err", "error: " + err.message);
+      wrap.replaceChild(status, actions);
+    }
+  };
+  approveBtn.addEventListener("click", () => decide(true));
+  denyBtn.addEventListener("click", () => decide(false));
+
+  box.appendChild(wrap);
   box.scrollTop = box.scrollHeight;
 }
 
@@ -424,6 +505,7 @@ $("runForm").addEventListener("submit", async (e) => {
     planner: $("plannerSelect").value,
     cycles: parseInt($("cyclesInput").value, 10) || 1,
     dryRun: $("dryRun").checked,
+    requireApproval: $("requireApproval").checked,
     objective: $("objective").value
   };
   try {

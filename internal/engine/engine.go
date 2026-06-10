@@ -25,7 +25,8 @@ import (
 // (the web console subscribes to these). Emitting is opt-in via Options.OnEvent;
 // CLI runs leave it nil and pay nothing.
 type Event struct {
-	Kind     string    `json:"kind"` // cycle|action|decision|result|finding|done|error|log
+	Kind     string    `json:"kind"` // cycle|action|decision|result|finding|done|error|log|approval_required
+	Action   string    `json:"action,omitempty"`
 	Cycle    int       `json:"cycle,omitempty"`
 	Tool     string    `json:"tool,omitempty"`
 	Target   string    `json:"target,omitempty"`
@@ -54,6 +55,14 @@ type Options struct {
 	// live monitoring). It is called synchronously on the run goroutine, so it
 	// must not block; the web console hands off to a buffered channel.
 	OnEvent func(Event)
+	// RequireApproval enables human-in-the-loop gating: high-impact actions
+	// (exploit/identity category or RiskHigh tools) pause for explicit operator
+	// approval instead of auto-running within scope.
+	RequireApproval bool
+	// Approver decides a high-impact action when RequireApproval is on. It may
+	// block (e.g. awaiting a click in the web console). nil + RequireApproval =
+	// fail closed (deny). The error return propagates (e.g. ctx cancelled).
+	Approver func(ctx context.Context, a action.Action) (bool, error)
 }
 
 // Engine coordinates one engagement.
@@ -103,6 +112,19 @@ func (e *Engine) CompletedActionKeys() []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// highImpact reports whether an action warrants human approval: an exploit/
+// identity/post-exploit/dos tool, or any RiskHigh tool.
+func highImpact(t tool.Tool) bool {
+	if t.MaxRisk() >= action.RiskHigh {
+		return true
+	}
+	switch t.Category() {
+	case action.CategoryExploit, action.CategoryIdentity, action.CategoryPostExploit, action.CategoryDoS:
+		return true
+	}
+	return false
 }
 
 // engagementHost extracts the bare host from a target (URL or host[:port]) so
@@ -267,6 +289,32 @@ func (e *Engine) handle(ctx context.Context, a action.Action) (bool, error) {
 	if !ok {
 		fmt.Fprintf(e.out, "  SKIP  %-12s %-22s — no such tool registered\n", a.Tool, a.Target)
 		return false, e.rec("result", map[string]any{"action": a.ID, "skipped": "unknown tool"})
+	}
+
+	// Human-in-the-loop: a high-impact action (exploit/identity tool or RiskHigh)
+	// pauses for explicit operator approval when RequireApproval is on.
+	if e.opts.RequireApproval && highImpact(t) {
+		approved := false
+		var aerr error
+		if e.opts.Approver != nil {
+			fmt.Fprintf(e.out, "  WAIT  %-12s %-22s — awaiting approval\n", a.Tool, a.Target)
+			approved, aerr = e.opts.Approver(ctx, a)
+			if aerr != nil {
+				return false, aerr
+			}
+		}
+		if rerr := e.audit.RecordApproval(audit.Approval{
+			Approver: "operator", ActionID: a.ID,
+			GuardReason: fmt.Sprintf("high-impact %s/%s", t.Category(), t.MaxRisk()), Approved: approved,
+		}); rerr != nil {
+			return false, rerr
+		}
+		if !approved {
+			fmt.Fprintf(e.out, "  DENY  %-12s %-22s — operator declined\n", a.Tool, a.Target)
+			e.emit(Event{Kind: "decision", Action: a.ID, Tool: a.Tool, Target: a.Target, Verdict: "denied", Reason: "operator declined"})
+			return false, nil
+		}
+		fmt.Fprintf(e.out, "  OK    %-12s %-22s — operator approved\n", a.Tool, a.Target)
 	}
 
 	if err := e.rec("action", map[string]any{
