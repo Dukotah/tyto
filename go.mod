@@ -16,5 +16,6 @@ require (
 	github.com/ncruces/go-sqlite3-wasm/v2 v2.6.35302 // indirect
 	github.com/ncruces/julianday v1.0.0 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
+	github.com/ulikunitz/xz v0.5.15 // indirect
 	golang.org/x/sys v0.45.0 // indirect
 )

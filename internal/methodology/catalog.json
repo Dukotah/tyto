@@ -82,6 +82,24 @@
       "why": "probe for exposed sensitive paths (secrets, VCS metadata, status endpoints)"
     },
     {
+      "id": "http-cve-match",
+      "name": "Version-based CVE matching",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "cvematch",
+      "applies_to": {"service": "http"},
+      "why": "match the detected server software/version against the local NVD CVE feeds"
+    },
+    {
+      "id": "https-cve-match",
+      "name": "Version-based CVE matching",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "cvematch",
+      "applies_to": {"service": "https"},
+      "why": "match the detected server software/version against the local NVD CVE feeds"
+    },
+    {
       "id": "http-jwt",
       "name": "JWT analysis",
       "phase": "vuln-analysis",

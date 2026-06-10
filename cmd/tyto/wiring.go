@@ -5,6 +5,7 @@ import (
 	"github.com/dukotah/tyto/internal/tool"
 	"github.com/dukotah/tyto/internal/tool/builtin/cmdexec"
 	"github.com/dukotah/tyto/internal/tool/builtin/corscheck"
+	"github.com/dukotah/tyto/internal/tool/builtin/cvematch"
 	"github.com/dukotah/tyto/internal/tool/builtin/defaultcreds"
 	"github.com/dukotah/tyto/internal/tool/builtin/dnsenum"
 	"github.com/dukotah/tyto/internal/tool/builtin/emailsec"
@@ -49,6 +50,7 @@ func defaultRegistry() *tool.Registry {
 	r.MustRegister(subtakeover.New())
 	r.MustRegister(templatescan.New())
 	r.MustRegister(jwtcheck.New())
+	r.MustRegister(cvematch.New())
 	// Exploitation tier (exploit-category, RiskHigh) — the Scope Guard only lets
 	// these run with a verified authorization grant for the target.
 	r.MustRegister(cmdexec.New())
