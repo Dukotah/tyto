@@ -9,13 +9,16 @@ import (
 	"github.com/dukotah/tyto/internal/tool/builtin/defaultcreds"
 	"github.com/dukotah/tyto/internal/tool/builtin/dnsenum"
 	"github.com/dukotah/tyto/internal/tool/builtin/emailsec"
+	"github.com/dukotah/tyto/internal/tool/builtin/exploitdb"
 	"github.com/dukotah/tyto/internal/tool/builtin/ftpcheck"
 	"github.com/dukotah/tyto/internal/tool/builtin/httpmethods"
 	"github.com/dukotah/tyto/internal/tool/builtin/httpprobe"
 	"github.com/dukotah/tyto/internal/tool/builtin/jwtcheck"
+	"github.com/dukotah/tyto/internal/tool/builtin/login"
 	"github.com/dukotah/tyto/internal/tool/builtin/portscan"
 	"github.com/dukotah/tyto/internal/tool/builtin/redircheck"
 	"github.com/dukotah/tyto/internal/tool/builtin/secretscan"
+	"github.com/dukotah/tyto/internal/tool/builtin/smbenum"
 	"github.com/dukotah/tyto/internal/tool/builtin/sqliexploit"
 	"github.com/dukotah/tyto/internal/tool/builtin/sshcheck"
 	"github.com/dukotah/tyto/internal/tool/builtin/subtakeover"
@@ -56,6 +59,9 @@ func defaultRegistry() *tool.Registry {
 	r.MustRegister(cmdexec.New())
 	r.MustRegister(sqliexploit.New())
 	r.MustRegister(defaultcreds.New())
+	r.MustRegister(login.New())
+	r.MustRegister(smbenum.New())
+	r.MustRegister(exploitdb.New())
 	return r
 }
 

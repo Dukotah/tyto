@@ -50,6 +50,9 @@ func (t *Tool) Execute(ctx context.Context, a action.Action) (action.Result, err
 		return res, err
 	}
 	req.Header.Set("User-Agent", "tyto-httpprobe")
+	if a.Cookie != "" {
+		req.Header.Set("Cookie", a.Cookie)
+	}
 
 	resp, err := t.http.Do(req)
 	if err != nil {

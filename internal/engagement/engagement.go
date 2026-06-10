@@ -44,6 +44,9 @@ type Engagement struct {
 	Authorization Authorization `yaml:"authorization"`
 	Scope         Scope         `yaml:"scope"`
 	RoE           RoE           `yaml:"rules_of_engagement"`
+	// ProvisionedCredentials are client-supplied test accounts for authenticated
+	// testing (fed to the login tool by the engine, scoped per target).
+	ProvisionedCredentials []ProvisionedCredential `yaml:"provisioned_credentials"`
 }
 
 // Load reads and validates an engagement file.

@@ -61,7 +61,7 @@ func (t *Tool) Execute(ctx context.Context, a action.Action) (action.Result, err
 		}
 		visited[cur] = true
 
-		links, forms, err := t.fetch(ctx, cur)
+		links, forms, err := t.fetch(ctx, cur, a.Cookie)
 		if err != nil {
 			continue
 		}
@@ -116,12 +116,15 @@ func (t *Tool) Execute(ctx context.Context, a action.Action) (action.Result, err
 }
 
 // fetch GETs a page and extracts hrefs and GET-form descriptors.
-func (t *Tool) fetch(ctx context.Context, u string) (links []string, forms []formInfo, err error) {
+func (t *Tool) fetch(ctx context.Context, u, cookie string) (links []string, forms []formInfo, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return nil, nil, err
 	}
 	req.Header.Set("User-Agent", "tyto-webcrawl")
+	if cookie != "" {
+		req.Header.Set("Cookie", cookie)
+	}
 	resp, err := t.http.Do(req)
 	if err != nil {
 		return nil, nil, err

@@ -22,7 +22,12 @@ import (
 	"github.com/dukotah/tyto/internal/state"
 )
 
-type Tool struct{ http *http.Client }
+// Tool. cookie holds the session cookie for the current Execute (set from
+// a.Cookie); the engine invokes Execute sequentially per run, so this is safe.
+type Tool struct {
+	http   *http.Client
+	cookie string
+}
 
 func New() *Tool {
 	return &Tool{http: &http.Client{Timeout: 8 * time.Second}}
@@ -53,6 +58,7 @@ const boolLenThreshold = 16
 
 func (t *Tool) Execute(ctx context.Context, a action.Action) (action.Result, error) {
 	res := action.Result{ActionID: a.ID, Tool: t.Name(), StartedAt: time.Now().UTC()}
+	t.cookie = a.Cookie // replay any established session on every injected request
 	base, err := url.Parse(normalizeURL(a.Target))
 	if err != nil {
 		res.Err = err.Error()
@@ -187,6 +193,9 @@ func (t *Tool) inject(ctx context.Context, base *url.URL, name, payload string) 
 		return "", u.String(), err
 	}
 	req.Header.Set("User-Agent", "tyto-webinject")
+	if t.cookie != "" {
+		req.Header.Set("Cookie", t.cookie)
+	}
 	resp, err := t.http.Do(req)
 	if err != nil {
 		return "", u.String(), err

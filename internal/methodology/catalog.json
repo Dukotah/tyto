@@ -262,6 +262,42 @@
       "why": "check for permissive CORS (reflected or wildcard origin, with credentials)"
     },
     {
+      "id": "smb-enum-adapter",
+      "name": "SMB/AD enumeration (adapter)",
+      "phase": "scanning",
+      "category": "identity",
+      "tool": "smbenum",
+      "applies_to": {"service": "smb"},
+      "why": "enumerate SMB shares/sessions via NetExec/crackmapexec if installed (optional shell-out adapter)"
+    },
+    {
+      "id": "http-login",
+      "name": "Authenticate (establish session)",
+      "phase": "exploitation",
+      "category": "identity",
+      "tool": "login",
+      "applies_to": {"service": "http"},
+      "why": "log in with provisioned credentials to enable authenticated testing of the discovered web service"
+    },
+    {
+      "id": "https-login",
+      "name": "Authenticate (establish session)",
+      "phase": "exploitation",
+      "category": "identity",
+      "tool": "login",
+      "applies_to": {"service": "https"},
+      "why": "log in with provisioned credentials to enable authenticated testing of the discovered web service"
+    },
+    {
+      "id": "endpoint-exploitdb",
+      "name": "Exploit-DB reference lookup",
+      "phase": "vuln-analysis",
+      "category": "recon",
+      "tool": "exploitdb",
+      "applies_to": {"asset_type": "endpoint"},
+      "why": "look up known public exploits for the target (reference only; via searchsploit if installed)"
+    },
+    {
       "id": "ssh-enum",
       "name": "SSH banner and version assessment",
       "phase": "scanning",

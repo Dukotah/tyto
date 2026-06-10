@@ -7,7 +7,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/dukotah/tyto/internal/action"
@@ -68,6 +70,9 @@ type Engine struct {
 	// duplicates are skipped deterministically (part of the termination contract).
 	seen     map[string]bool
 	throttle *throttle
+	// sessions maps a host to an established session cookie (from the login tool),
+	// injected into later actions against that host so they run authenticated.
+	sessions map[string]string
 }
 
 // New wires an engine. The caller owns the state and audit log (so it can render
@@ -82,7 +87,7 @@ func New(
 	out io.Writer,
 	opts Options,
 ) *Engine {
-	e := &Engine{eng: eng, guard: g, planner: p, tools: tools, state: st, audit: a, out: out, opts: opts, seen: make(map[string]bool), throttle: newThrottle(eng.RoE)}
+	e := &Engine{eng: eng, guard: g, planner: p, tools: tools, state: st, audit: a, out: out, opts: opts, seen: make(map[string]bool), throttle: newThrottle(eng.RoE), sessions: make(map[string]string)}
 	for _, k := range opts.PriorActionKeys {
 		e.seen[k] = true
 	}
@@ -98,6 +103,22 @@ func (e *Engine) CompletedActionKeys() []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// engagementHost extracts the bare host from a target (URL or host[:port]) so
+// sessions can be keyed by host across actions.
+func engagementHost(target string) string {
+	t := target
+	if i := strings.Index(t, "://"); i >= 0 {
+		t = t[i+3:]
+	}
+	if i := strings.IndexAny(t, "/?#"); i >= 0 {
+		t = t[:i]
+	}
+	if h, _, err := net.SplitHostPort(t); err == nil {
+		return h
+	}
+	return t
 }
 
 // emit sends a structured progress event if a listener is attached (no-op for
@@ -262,6 +283,30 @@ func (e *Engine) handle(ctx context.Context, a action.Action) (bool, error) {
 	}
 	defer release()
 
+	// Inject any established session for this target's host so the tool runs
+	// authenticated (tools that support it attach a.Cookie to their requests).
+	if c := e.sessions[engagementHost(a.Target)]; c != "" {
+		a.Cookie = c
+	}
+
+	// For the login tool, fill credentials from a matching provisioned credential
+	// when the planner didn't supply them.
+	if a.Tool == "login" {
+		if pc, ok := e.eng.ProvisionedFor(a.Target); ok {
+			merged := map[string]string{"username": pc.Username, "password": pc.Secret}
+			if pc.LoginURL != "" {
+				merged["login_url"] = pc.LoginURL
+			}
+			if pc.Mode != "" {
+				merged["mode"] = pc.Mode
+			}
+			for k, v := range a.Params { // planner-supplied params win
+				merged[k] = v
+			}
+			a.Params = merged
+		}
+	}
+
 	res, err := t.Execute(ctx, a)
 	if err != nil {
 		fmt.Fprintf(e.out, "  ERROR %-12s %-22s — %v\n", a.Tool, a.Target, err)
@@ -291,6 +336,13 @@ func (e *Engine) handle(ctx context.Context, a action.Action) (bool, error) {
 			if err := e.rec("credential", c.Redacted()); err != nil {
 				return false, err
 			}
+		}
+	}
+	// Capture an established session so later actions against the host inherit it.
+	if res.Session != nil && res.Session.Cookie != "" {
+		e.sessions[res.Session.Host] = res.Session.Cookie
+		if err := e.rec("session_established", map[string]any{"host": res.Session.Host, "action": a.ID}); err != nil {
+			return false, err
 		}
 	}
 	if err := e.rec("result", map[string]any{

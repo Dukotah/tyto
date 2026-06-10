@@ -65,6 +65,17 @@ type Action struct {
 	Params    map[string]string // tool-specific parameters
 	Risk      RiskLevel
 	Rationale string // why the planner chose this (for audit + reports)
+	// Cookie is the session cookie header for this action's target host, injected
+	// by the engine from an established session so HTTP tools run authenticated.
+	// Tools that support authenticated requests attach it; others ignore it.
+	Cookie string
+}
+
+// Session is an authenticated session a tool established (e.g. the login tool),
+// which the engine stores and replays to later actions against the same host.
+type Session struct {
+	Host   string
+	Cookie string
 }
 
 // Result is what a tool returns after executing an Action.
@@ -82,7 +93,11 @@ type Result struct {
 	// Credentials are secrets recovered by the tool (creds/hashes/tokens/keys).
 	// The engine records them to state + (redacted) to the audit log.
 	Credentials []state.Credential
-	Err         string
-	StartedAt   time.Time
-	FinishedAt  time.Time
+	// Session is an authenticated session the tool established (e.g. the login
+	// tool). The engine stores it and replays its Cookie to later actions against
+	// the same host so HTTP tools run authenticated. Nil when none was established.
+	Session    *Session
+	Err        string
+	StartedAt  time.Time
+	FinishedAt time.Time
 }
