@@ -28,7 +28,7 @@ func NewOllama(baseURL, model string) *Ollama {
 	return &Ollama{
 		BaseURL: baseURL,
 		Model:   model,
-		http:    &http.Client{Timeout: 120 * time.Second},
+		http:    &http.Client{Timeout: 240 * time.Second},
 	}
 }
 
@@ -43,6 +43,10 @@ type ollamaRequest struct {
 	// Format is raw JSON: the string "json" for a plain JSON hint, or a full JSON
 	// Schema object, which Ollama compiles to a GBNF grammar (structured output).
 	Format json.RawMessage `json:"format,omitempty"`
+	// Think toggles the reasoning pass on "thinking" models (qwen3, etc.). We set
+	// it false so planning skips the long <think> stream — far faster on CPU and
+	// it keeps the structured-output grammar clean. Ignored by non-thinking models.
+	Think *bool `json:"think,omitempty"`
 }
 
 type ollamaResponse struct {
@@ -66,12 +70,14 @@ func (o *Ollama) GenerateSchema(ctx context.Context, system, user string, schema
 }
 
 func (o *Ollama) generate(ctx context.Context, system, user string, format json.RawMessage) (string, error) {
+	noThink := false
 	body, err := json.Marshal(ollamaRequest{
 		Model:  o.Model,
 		System: system,
 		Prompt: user,
 		Stream: false,
 		Format: format,
+		Think:  &noThink,
 	})
 	if err != nil {
 		return "", err
