@@ -279,10 +279,11 @@ where "model-unbypassable guard" becomes true instead of aspirational.*
 > (`internal/cvss`, scored into findings), HTML/print-to-PDF + Markdown + JSON, native
 > dedup/grouping, and validate-before-report (validated/candidate split). Detection breadth ✅
 > via a NATIVE template engine — `internal/templates` runs Nuclei-style YAML templates with an
-> embedded, operator-extensible starter pack (`templatescan`), rather than embedding the heavy
-> nuclei/v3 lib (keeps single-binary/offline). **Still not done:** a much larger template pack
-> (or real nuclei-templates ingestion), dependency/version **CVE feeds** (Trivy / FKIE NVD), the
-> `tyto feeds` bundler, and semantic recall.
+> embedded starter pack AND can ingest the real nuclei-templates repo from disk (~6,841 of
+> 13,269 usable). Version-based **CVE matching ✅** too: `tyto feeds index` builds a SQLite
+> index from the FKIE NVD feeds (28 years / ~250k CVEs, cached locally), and `cvematch` does
+> instant product/version→CVE lookups against it. **Still not done:** Trivy dependency/container
+> CVE scanning, container/IaC coverage, and semantic recall.
 *Where tyto starts competing with Nessus on detection breadth. (Burp-class web-active
 testing is Phase 4 — don't claim it here.)*
 - ⬜ **Embed Nuclei v3** (`nuclei/v3/lib`) + **vendored nuclei-templates** snapshot +
