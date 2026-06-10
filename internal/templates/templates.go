@@ -17,9 +17,12 @@ package templates
 import (
 	"context"
 	"embed"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -52,9 +55,122 @@ type Info struct {
 
 // Template is one detection: an identifier, its info, and the requests to run.
 type Template struct {
-	ID       string    `yaml:"id"`
-	Info     Info      `yaml:"info"`
-	Requests []Request `yaml:"requests"`
+	ID       string
+	Info     Info
+	Requests []Request
+}
+
+// ErrUnsupported marks a template that parsed as valid YAML but uses no feature
+// this engine supports — e.g. it is a headless/network/dns/code template, every
+// request uses raw/unsupported transport, or no request has a usable
+// (status/word/regex) matcher. Such a template cannot be run and is skipped by
+// LoadDir rather than treated as a hard parse error.
+var ErrUnsupported = errors.New("template uses no supported request/matcher features")
+
+// rawTemplate mirrors the on-disk shape of a nuclei template. It accepts the
+// request list under either the newer `http:` key or the older `requests:` key,
+// plus the unsupported transport keys (headless/network/dns/code) so we can
+// detect-and-skip those templates cleanly.
+type rawTemplate struct {
+	ID       string       `yaml:"id"`
+	Info     Info         `yaml:"info"`
+	HTTP     []rawRequest `yaml:"http"`
+	Requests []rawRequest `yaml:"requests"`
+
+	// Unsupported transports. We only check whether they are present.
+	Headless  []yaml.Node `yaml:"headless"`
+	Network   []yaml.Node `yaml:"network"`
+	TCP       []yaml.Node `yaml:"tcp"`
+	DNS       []yaml.Node `yaml:"dns"`
+	Code      []yaml.Node `yaml:"code"`
+	SSL       []yaml.Node `yaml:"ssl"`
+	WebSocket []yaml.Node `yaml:"websocket"`
+	Whois     []yaml.Node `yaml:"whois"`
+}
+
+// rawRequest mirrors the on-disk shape of one HTTP request. Raw requests (the
+// `raw:` key) are unsupported and cause the request to be dropped.
+type rawRequest struct {
+	Method            string       `yaml:"method"`
+	Path              []string     `yaml:"path"`
+	Raw               []string     `yaml:"raw"`
+	MatchersCondition string       `yaml:"matchers-condition"`
+	Matchers          []rawMatcher `yaml:"matchers"`
+}
+
+// rawMatcher mirrors the on-disk shape of one matcher. Only status/word/regex
+// types are supported; any other type (dsl, binary, size, …) is dropped.
+type rawMatcher struct {
+	Type      string   `yaml:"type"`
+	Status    []int    `yaml:"status"`
+	Words     []string `yaml:"words"`
+	Regex     []string `yaml:"regex"`
+	Part      string   `yaml:"part"`
+	Condition string   `yaml:"condition"`
+	Negative  bool     `yaml:"negative"`
+}
+
+// supportedMatcherTypes is the closed set of matcher types this engine can run.
+var supportedMatcherTypes = map[string]bool{
+	"status": true,
+	"word":   true,
+	"regex":  true,
+}
+
+// UnmarshalYAML decodes a template from either the `http:` or `requests:` key
+// and filters it down to the subset this engine supports. Unsupported matcher
+// types are dropped; a request with no supported matchers (or that uses `raw:`)
+// is dropped; if the template has no usable request left it is reported as
+// ErrUnsupported so callers can skip it.
+func (t *Template) UnmarshalYAML(value *yaml.Node) error {
+	var raw rawTemplate
+	if err := value.Decode(&raw); err != nil {
+		return err
+	}
+
+	t.ID = raw.ID
+	t.Info = raw.Info
+
+	// Prefer the newer `http:` key, fall back to the older `requests:` key.
+	rawReqs := raw.HTTP
+	if len(rawReqs) == 0 {
+		rawReqs = raw.Requests
+	}
+
+	for _, rr := range rawReqs {
+		// `raw:` requests use a transport this engine does not implement.
+		if len(rr.Raw) > 0 || len(rr.Path) == 0 {
+			continue
+		}
+		req := Request{
+			Method:            rr.Method,
+			Path:              rr.Path,
+			MatchersCondition: rr.MatchersCondition,
+		}
+		for _, rm := range rr.Matchers {
+			if !supportedMatcherTypes[strings.ToLower(rm.Type)] {
+				continue // drop dsl/binary/size/etc.
+			}
+			req.Matchers = append(req.Matchers, Matcher{
+				Type:      rm.Type,
+				Status:    rm.Status,
+				Words:     rm.Words,
+				Regex:     rm.Regex,
+				Part:      rm.Part,
+				Condition: rm.Condition,
+				Negative:  rm.Negative,
+			})
+		}
+		if len(req.Matchers) == 0 {
+			continue // a request with no usable matcher can never fire.
+		}
+		t.Requests = append(t.Requests, req)
+	}
+
+	if len(t.Requests) == 0 {
+		return ErrUnsupported
+	}
+	return nil
 }
 
 // Request is a single HTTP probe: a method, one or more paths to fetch, and the
@@ -87,10 +203,16 @@ type Hit struct {
 	URL         string
 }
 
-// Parse decodes a single YAML template.
+// Parse decodes a single YAML template. It accepts either the `http:` or
+// `requests:` request key and tolerates real nuclei features it cannot run by
+// dropping them. A template that parses as YAML but has no runnable request is
+// returned with ErrUnsupported (callers should errors.Is-check and skip it).
 func Parse(data []byte) (Template, error) {
 	var t Template
 	if err := yaml.Unmarshal(data, &t); err != nil {
+		if errors.Is(err, ErrUnsupported) {
+			return Template{}, ErrUnsupported
+		}
 		return Template{}, fmt.Errorf("parse template: %w", err)
 	}
 	return t, nil
@@ -121,6 +243,65 @@ func LoadEmbedded() ([]Template, error) {
 		tmpls = append(tmpls, t)
 	}
 	return tmpls, nil
+}
+
+// LoadDir recursively walks dir for *.yaml/*.yml files and parses each one. It
+// returns the templates that loaded cleanly, a count of files that were skipped
+// (because they failed to parse or were unsupported), and an error only for a
+// failure of the walk itself. A non-existent dir is not an error: it returns
+// (nil, 0, nil). The walk is resilient — one unreadable or malformed file never
+// aborts it — and skips .git directories for speed.
+func LoadDir(dir string) (loaded []Template, skipped int, err error) {
+	if dir == "" {
+		return nil, 0, nil
+	}
+	if _, statErr := os.Stat(dir); statErr != nil {
+		if os.IsNotExist(statErr) {
+			return nil, 0, nil
+		}
+		return nil, 0, statErr
+	}
+
+	walkErr := filepath.WalkDir(dir, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			// Skip unreadable entries rather than aborting the whole walk.
+			if d != nil && d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.IsDir() {
+			if d.Name() == ".git" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		ext := strings.ToLower(filepath.Ext(d.Name()))
+		if ext != ".yaml" && ext != ".yml" {
+			return nil
+		}
+		data, readErr := os.ReadFile(path)
+		if readErr != nil {
+			skipped++
+			return nil
+		}
+		t, parseErr := Parse(data)
+		if parseErr != nil {
+			// Malformed or unsupported: count and move on.
+			skipped++
+			return nil
+		}
+		if t.ID == "" || len(t.Requests) == 0 {
+			skipped++
+			return nil
+		}
+		loaded = append(loaded, t)
+		return nil
+	})
+	if walkErr != nil {
+		return loaded, skipped, walkErr
+	}
+	return loaded, skipped, nil
 }
 
 // Run executes every request (and every path within it) against baseURL,

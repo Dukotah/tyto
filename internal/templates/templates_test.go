@@ -2,8 +2,11 @@ package templates
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -279,6 +282,204 @@ requests:
 	}
 	if hits[0].URL != srv.URL+"/probe" {
 		t.Errorf("hit URL = %q, want %q", hits[0].URL, srv.URL+"/probe")
+	}
+}
+
+func TestParseHTTPKey(t *testing.T) {
+	// Newer nuclei templates use the `http:` key instead of `requests:`.
+	const httpKey = `
+id: http-key-template
+info:
+  name: HTTP Key Template
+  severity: medium
+  description: Uses the newer http key.
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/admin"
+    matchers:
+      - type: status
+        status: [200]
+`
+	tmpl, err := Parse([]byte(httpKey))
+	if err != nil {
+		t.Fatalf("Parse http-key: %v", err)
+	}
+	if tmpl.ID != "http-key-template" {
+		t.Errorf("ID = %q", tmpl.ID)
+	}
+	if len(tmpl.Requests) != 1 {
+		t.Fatalf("got %d requests, want 1", len(tmpl.Requests))
+	}
+	if got := tmpl.Requests[0].Path; len(got) != 1 || got[0] != "{{BaseURL}}/admin" {
+		t.Errorf("path = %v", got)
+	}
+}
+
+func TestParseDropsUnsupportedMatchers(t *testing.T) {
+	// A request with one supported (status) and one unsupported (dsl) matcher
+	// keeps only the supported matcher.
+	const mixed = `
+id: mixed-matchers
+info:
+  name: Mixed
+  severity: low
+http:
+  - method: GET
+    path: ["{{BaseURL}}/x"]
+    matchers:
+      - type: status
+        status: [200]
+      - type: dsl
+        dsl: ["len(body) > 0"]
+`
+	tmpl, err := Parse([]byte(mixed))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(tmpl.Requests) != 1 {
+		t.Fatalf("got %d requests, want 1", len(tmpl.Requests))
+	}
+	if len(tmpl.Requests[0].Matchers) != 1 {
+		t.Fatalf("got %d matchers, want 1 (dsl dropped)", len(tmpl.Requests[0].Matchers))
+	}
+	if tmpl.Requests[0].Matchers[0].Type != "status" {
+		t.Errorf("kept matcher = %q, want status", tmpl.Requests[0].Matchers[0].Type)
+	}
+}
+
+func TestParseUnsupportedTemplate(t *testing.T) {
+	// A dsl-only template has no runnable matcher -> ErrUnsupported.
+	const dslOnly = `
+id: dsl-only
+info:
+  name: DSL only
+  severity: info
+http:
+  - method: GET
+    path: ["{{BaseURL}}/x"]
+    matchers:
+      - type: dsl
+        dsl: ["true"]
+`
+	if _, err := Parse([]byte(dslOnly)); !errors.Is(err, ErrUnsupported) {
+		t.Fatalf("dsl-only: err = %v, want ErrUnsupported", err)
+	}
+
+	// A raw: request is an unsupported transport -> ErrUnsupported.
+	const rawReq = `
+id: raw-req
+info:
+  name: Raw
+  severity: info
+http:
+  - raw:
+      - |
+        GET / HTTP/1.1
+        Host: {{Hostname}}
+    matchers:
+      - type: status
+        status: [200]
+`
+	if _, err := Parse([]byte(rawReq)); !errors.Is(err, ErrUnsupported) {
+		t.Fatalf("raw: err = %v, want ErrUnsupported", err)
+	}
+}
+
+func TestLoadDir(t *testing.T) {
+	dir := t.TempDir()
+
+	httpTmpl := `
+id: http-tmpl
+info:
+  name: HTTP Tmpl
+  severity: high
+http:
+  - method: GET
+    path: ["{{BaseURL}}/a"]
+    matchers:
+      - type: status
+        status: [200]
+`
+	requestsTmpl := `
+id: requests-tmpl
+info:
+  name: Requests Tmpl
+  severity: medium
+requests:
+  - method: GET
+    path: ["{{BaseURL}}/b"]
+    matchers:
+      - type: word
+        words: ["needle"]
+`
+	unsupportedTmpl := `
+id: dsl-tmpl
+info:
+  name: DSL Tmpl
+  severity: info
+http:
+  - method: GET
+    path: ["{{BaseURL}}/c"]
+    matchers:
+      - type: dsl
+        dsl: ["true"]
+`
+	mustWrite(t, filepath.Join(dir, "http.yaml"), httpTmpl)
+	mustWrite(t, filepath.Join(dir, "requests.yml"), requestsTmpl)
+	// Nested dir to exercise recursion.
+	sub := filepath.Join(dir, "sub")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, filepath.Join(sub, "dsl.yaml"), unsupportedTmpl)
+	// A .git dir that must be skipped (contents would otherwise count).
+	gitDir := filepath.Join(dir, ".git")
+	if err := os.MkdirAll(gitDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, filepath.Join(gitDir, "junk.yaml"), "not: valid: yaml: [")
+
+	loaded, skipped, err := LoadDir(dir)
+	if err != nil {
+		t.Fatalf("LoadDir: %v", err)
+	}
+	if len(loaded) != 2 {
+		t.Fatalf("loaded = %d, want 2", len(loaded))
+	}
+	if skipped != 1 {
+		t.Fatalf("skipped = %d, want 1", skipped)
+	}
+
+	// The http: template parsed its request.
+	var httpT *Template
+	for i := range loaded {
+		if loaded[i].ID == "http-tmpl" {
+			httpT = &loaded[i]
+		}
+	}
+	if httpT == nil {
+		t.Fatalf("http-tmpl not loaded; got %+v", loaded)
+	}
+	if len(httpT.Requests) != 1 || len(httpT.Requests[0].Path) != 1 || httpT.Requests[0].Path[0] != "{{BaseURL}}/a" {
+		t.Errorf("http-tmpl request not parsed: %+v", httpT.Requests)
+	}
+}
+
+func TestLoadDirMissing(t *testing.T) {
+	loaded, skipped, err := LoadDir(filepath.Join(t.TempDir(), "does-not-exist"))
+	if err != nil {
+		t.Fatalf("LoadDir(missing) err = %v, want nil", err)
+	}
+	if loaded != nil || skipped != 0 {
+		t.Fatalf("LoadDir(missing) = (%v, %d), want (nil, 0)", loaded, skipped)
+	}
+}
+
+func mustWrite(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
 

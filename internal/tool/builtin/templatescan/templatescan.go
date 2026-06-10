@@ -9,6 +9,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -41,6 +43,29 @@ func (t *Tool) Execute(ctx context.Context, a action.Action) (action.Result, err
 		return res, err
 	}
 
+	// Augment the embedded pack with operator-supplied templates from disk. The
+	// dir is resolved in precedence order; a missing/empty dir is a no-op. Disk
+	// templates are deduped by ID with the embedded pack winning ties.
+	var fromDisk, skipped int
+	if dir := templatesDir(a); dir != "" {
+		extra, sk, derr := templates.LoadDir(dir)
+		skipped = sk
+		if derr == nil {
+			have := make(map[string]bool, len(tmpls))
+			for _, t := range tmpls {
+				have[t.ID] = true
+			}
+			for _, et := range extra {
+				if et.ID == "" || have[et.ID] {
+					continue
+				}
+				have[et.ID] = true
+				tmpls = append(tmpls, et)
+				fromDisk++
+			}
+		}
+	}
+
 	hits := templates.RunAll(ctx, t.http, base, tmpls)
 	for _, h := range hits {
 		res.Findings = append(res.Findings, state.Finding{
@@ -56,9 +81,33 @@ func (t *Tool) Execute(ctx context.Context, a action.Action) (action.Result, err
 	}
 
 	res.Success = true
-	res.Output = fmt.Sprintf("%s: %d template(s) matched of %d", base, len(hits), len(tmpls))
+	res.Output = fmt.Sprintf(
+		"%s: ran %d templates (%d from disk, %d skipped as unsupported); %d matched",
+		base, len(tmpls), fromDisk, skipped, len(hits),
+	)
 	res.FinishedAt = time.Now().UTC()
 	return res, nil
+}
+
+// templatesDir resolves the directory of extra templates to load, in precedence
+// order: the action's "templates" param, then $TYTO_TEMPLATES, then the default
+// ~/.tyto/templates (only if it exists). Returns "" when none apply.
+func templatesDir(a action.Action) string {
+	if d := strings.TrimSpace(a.Params["templates"]); d != "" {
+		return d
+	}
+	if d := strings.TrimSpace(os.Getenv("TYTO_TEMPLATES")); d != "" {
+		return d
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	def := filepath.Join(home, ".tyto", "templates")
+	if info, err := os.Stat(def); err == nil && info.IsDir() {
+		return def
+	}
+	return ""
 }
 
 func parseSeverity(s string) state.Severity {
