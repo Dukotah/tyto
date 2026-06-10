@@ -210,43 +210,48 @@ func (c *console) handleRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	c.mu.Lock()
-	if c.running {
-		c.mu.Unlock()
-		writeJSON(w, map[string]any{"error": "a run is already in progress"})
+	if errMsg := c.startRun(req.Engagement, req.Objective, req.Planner, req.Cycles, req.DryRun, req.RequireApproval); errMsg != "" {
+		writeJSON(w, map[string]any{"error": errMsg})
 		return
 	}
+	writeJSON(w, map[string]any{"ok": true})
+}
 
-	eng, err := engagement.Load(req.Engagement)
-	if err != nil {
-		c.mu.Unlock()
-		writeJSON(w, map[string]any{"error": "load engagement: " + err.Error()})
-		return
+// startRun loads an engagement and launches the autonomous run goroutine. Shared
+// by the Run form (handleRun) and the agentic chat (handleChat). The objective
+// becomes the model's top-priority instruction; the guard still gates every
+// action against the engagement's authorized scope. Returns "" on success.
+func (c *console) startRun(engPath, objective, planner string, cycles int, dryRun, requireApproval bool) string {
+	c.mu.Lock()
+	already := c.running
+	c.mu.Unlock()
+	if already {
+		return "a run is already in progress"
 	}
-	// The operator's instruction is fed to the model as the top-priority objective
-	// — it decides which tools to run, the guard still gates every action.
-	if obj := strings.TrimSpace(req.Objective); obj != "" {
+	if strings.TrimSpace(engPath) == "" {
+		return "no engagement selected"
+	}
+	eng, err := engagement.Load(engPath)
+	if err != nil {
+		return "load engagement: " + err.Error()
+	}
+	if obj := strings.TrimSpace(objective); obj != "" {
 		eng.Objectives = append([]string{"OPERATOR INSTRUCTION (top priority): " + obj}, eng.Objectives...)
 	}
-
-	client, err := c.plannerClient(req, eng)
+	client, err := c.plannerClient(runReq{Planner: planner}, eng)
 	if err != nil {
-		c.mu.Unlock()
-		writeJSON(w, map[string]any{"error": err.Error()})
-		return
+		return err.Error()
 	}
-
-	cycles := req.Cycles
 	if cycles <= 0 {
 		cycles = 3
 	}
 	st := state.New()
 	ctx, cancel := context.WithCancel(context.Background())
+	c.mu.Lock()
 	c.eng, c.st, c.auditBuf, c.history, c.running, c.runCancel = eng, st, &safeBuffer{}, nil, true, cancel
 	c.mu.Unlock()
-
-	go c.runEngagement(ctx, eng, st, client, cycles, req.DryRun, req.RequireApproval)
-	writeJSON(w, map[string]any{"ok": true})
+	go c.runEngagement(ctx, eng, st, client, cycles, dryRun, requireApproval)
+	return ""
 }
 
 func (c *console) plannerClient(req runReq, eng *engagement.Engagement) (llm.Client, error) {
@@ -343,9 +348,28 @@ func (c *console) handleChat(w http.ResponseWriter, r *http.Request) {
 			Role    string `json:"role"`
 			Content string `json:"content"`
 		} `json:"history"`
+		Engagement      string `json:"engagement"`
+		RequireApproval bool   `json:"requireApproval"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Message) == "" {
 		writeJSON(w, map[string]any{"error": "empty or malformed message"})
+		return
+	}
+
+	// Fast path: control commands must never wait on the model (which may be busy
+	// planning a running engagement). Handle stop/halt directly.
+	msg := strings.ToLower(strings.TrimSpace(req.Message))
+	if msg == "stop" || msg == "halt" || msg == "cancel" || msg == "abort" || msg == "pause" ||
+		strings.HasPrefix(msg, "stop ") || strings.HasPrefix(msg, "halt ") || strings.Contains(msg, "stop the") {
+		c.mu.Lock()
+		cancel := c.runCancel
+		c.mu.Unlock()
+		if cancel != nil {
+			cancel()
+			writeJSON(w, map[string]any{"reply": "Stopping the run.", "stopped": true})
+			return
+		}
+		writeJSON(w, map[string]any{"reply": "Nothing is running right now."})
 		return
 	}
 
@@ -359,15 +383,20 @@ func (c *console) handleChat(w http.ResponseWriter, r *http.Request) {
 	}
 	client := llm.NewOllama(url, model)
 
-	system := "You are tyto's assistant for an AUTHORIZED penetration-testing engagement. " +
-		"Help the operator understand findings and decide next steps. Stay strictly within the " +
-		"authorized scope — never suggest testing out-of-scope or unauthorized targets. Be concise " +
-		"and practical.\n\n" + chatContext(eng, st)
+	// Agentic: the assistant decides whether to answer, RUN the engagement, or
+	// STOP it. Running stays inside the loaded engagement's authorized scope — the
+	// guard gates every action regardless of what the chat asks for.
+	system := "You are tyto's operator assistant for an AUTHORIZED penetration test. Decide how to " +
+		"handle the operator's latest message and reply ONLY as JSON matching the schema. " +
+		"mode='answer': they asked a question or want advice — put your prose answer in 'reply'. " +
+		"mode='run': they told you to start/run/attack/scan/test/assess/exploit the in-scope target — " +
+		"put a clear engagement objective in 'objective' and a one-line confirmation in 'reply'. " +
+		"mode='stop': they want to halt the running engagement. Stay within authorized scope; the " +
+		"guard enforces it.\n\n" + chatContext(eng, st)
 
 	var b strings.Builder
-	n := len(req.History)
-	if n > 12 {
-		req.History = req.History[n-12:] // bound the context to the last turns
+	if n := len(req.History); n > 12 {
+		req.History = req.History[n-12:]
 	}
 	for _, m := range req.History {
 		label := "Operator"
@@ -376,16 +405,59 @@ func (c *console) handleChat(w http.ResponseWriter, r *http.Request) {
 		}
 		fmt.Fprintf(&b, "%s: %s\n", label, m.Content)
 	}
-	fmt.Fprintf(&b, "Operator: %s\nAssistant:", req.Message)
+	fmt.Fprintf(&b, "Operator: %s", req.Message)
 
+	schema := json.RawMessage(`{"type":"object","properties":{"mode":{"type":"string","enum":["answer","run","stop"]},"objective":{"type":"string"},"reply":{"type":"string"}},"required":["mode","reply"]}`)
 	ctx, cancel := context.WithTimeout(r.Context(), 240*time.Second)
 	defer cancel()
-	reply, err := client.Chat(ctx, system, b.String())
+	raw, err := client.GenerateSchema(ctx, system, b.String(), schema)
 	if err != nil {
 		writeJSON(w, map[string]any{"error": "chat: " + err.Error()})
 		return
 	}
-	writeJSON(w, map[string]any{"reply": strings.TrimSpace(reply)})
+	var d struct {
+		Mode      string `json:"mode"`
+		Objective string `json:"objective"`
+		Reply     string `json:"reply"`
+	}
+	_ = json.Unmarshal([]byte(raw), &d)
+
+	switch d.Mode {
+	case "run":
+		obj := strings.TrimSpace(d.Objective)
+		if obj == "" {
+			obj = req.Message
+		}
+		if errMsg := c.startRun(req.Engagement, obj, "ollama", 3, false, req.RequireApproval); errMsg != "" {
+			writeJSON(w, map[string]any{"reply": "I couldn't start the run: " + errMsg + ". Pick an authorized engagement on the Run tab, then ask again."})
+			return
+		}
+		reply := strings.TrimSpace(d.Reply)
+		if reply == "" {
+			reply = "Starting the assessment — watch it live on the Dashboard."
+		}
+		writeJSON(w, map[string]any{"reply": reply, "started": true})
+	case "stop":
+		c.mu.Lock()
+		cancel := c.runCancel
+		c.mu.Unlock()
+		reply := strings.TrimSpace(d.Reply)
+		if cancel != nil {
+			cancel()
+			if reply == "" {
+				reply = "Stopping the run."
+			}
+		} else if reply == "" {
+			reply = "Nothing is running right now."
+		}
+		writeJSON(w, map[string]any{"reply": reply, "stopped": cancel != nil})
+	default:
+		reply := strings.TrimSpace(d.Reply)
+		if reply == "" {
+			reply = strings.TrimSpace(raw)
+		}
+		writeJSON(w, map[string]any{"reply": reply})
+	}
 }
 
 // chatContext is the safe, bounded projection of engagement state fed to the
