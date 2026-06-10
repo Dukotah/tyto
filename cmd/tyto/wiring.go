@@ -11,16 +11,21 @@ import (
 	"github.com/dukotah/tyto/internal/tool/builtin/dnsenum"
 	"github.com/dukotah/tyto/internal/tool/builtin/emailsec"
 	"github.com/dukotah/tyto/internal/tool/builtin/exploitdb"
+	"github.com/dukotah/tyto/internal/tool/builtin/ffufadapter"
 	"github.com/dukotah/tyto/internal/tool/builtin/ftpcheck"
 	"github.com/dukotah/tyto/internal/tool/builtin/httpmethods"
 	"github.com/dukotah/tyto/internal/tool/builtin/httpprobe"
 	"github.com/dukotah/tyto/internal/tool/builtin/jwtcheck"
 	"github.com/dukotah/tyto/internal/tool/builtin/login"
+	"github.com/dukotah/tyto/internal/tool/builtin/niktoadapter"
+	"github.com/dukotah/tyto/internal/tool/builtin/nmapscan"
+	"github.com/dukotah/tyto/internal/tool/builtin/nucleiscan"
 	"github.com/dukotah/tyto/internal/tool/builtin/portscan"
 	"github.com/dukotah/tyto/internal/tool/builtin/redircheck"
 	"github.com/dukotah/tyto/internal/tool/builtin/secretscan"
 	"github.com/dukotah/tyto/internal/tool/builtin/smbenum"
 	"github.com/dukotah/tyto/internal/tool/builtin/sqliexploit"
+	"github.com/dukotah/tyto/internal/tool/builtin/sqlmapadapter"
 	"github.com/dukotah/tyto/internal/tool/builtin/sshcheck"
 	"github.com/dukotah/tyto/internal/tool/builtin/ssti"
 	"github.com/dukotah/tyto/internal/tool/builtin/subtakeover"
@@ -31,6 +36,8 @@ import (
 	"github.com/dukotah/tyto/internal/tool/builtin/webcrawl"
 	"github.com/dukotah/tyto/internal/tool/builtin/webdiscover"
 	"github.com/dukotah/tyto/internal/tool/builtin/webinject"
+	"github.com/dukotah/tyto/internal/tool/builtin/whatweb"
+	"github.com/dukotah/tyto/internal/tool/builtin/wpscanadapter"
 )
 
 // defaultRegistry wires the built-in tool adapters.
@@ -66,6 +73,14 @@ func defaultRegistry() *tool.Registry {
 	r.MustRegister(login.New())
 	r.MustRegister(smbenum.New())
 	r.MustRegister(exploitdb.New())
+	// Kali shell-out adapters (runtime-detected; degrade gracefully if absent).
+	r.MustRegister(nmapscan.New())
+	r.MustRegister(nucleiscan.New())
+	r.MustRegister(ffufadapter.New())
+	r.MustRegister(niktoadapter.New())
+	r.MustRegister(whatweb.New())
+	r.MustRegister(wpscanadapter.New())
+	r.MustRegister(sqlmapadapter.New())
 	return r
 }
 

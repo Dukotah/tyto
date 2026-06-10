@@ -325,6 +325,114 @@
       "why": "look up known public exploits for the target (reference only; via searchsploit if installed)"
     },
     {
+      "id": "host-nmap",
+      "name": "Deep service scan (nmap)",
+      "phase": "scanning",
+      "category": "scan",
+      "tool": "nmapscan",
+      "applies_to": {"asset_type": "host"},
+      "why": "drive nmap -sV for deep service/version enumeration (if installed)"
+    },
+    {
+      "id": "http-nuclei",
+      "name": "Nuclei template scan (full corpus)",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "nucleiscan",
+      "applies_to": {"service": "http"},
+      "why": "drive the full nuclei engine (10k+ templates) if installed"
+    },
+    {
+      "id": "https-nuclei",
+      "name": "Nuclei template scan (full corpus)",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "nucleiscan",
+      "applies_to": {"service": "https"},
+      "why": "drive the full nuclei engine (10k+ templates) if installed"
+    },
+    {
+      "id": "http-whatweb",
+      "name": "Technology fingerprint (whatweb)",
+      "phase": "recon",
+      "category": "recon",
+      "tool": "whatweb",
+      "applies_to": {"service": "http"},
+      "why": "fingerprint the web stack with whatweb if installed"
+    },
+    {
+      "id": "https-whatweb",
+      "name": "Technology fingerprint (whatweb)",
+      "phase": "recon",
+      "category": "recon",
+      "tool": "whatweb",
+      "applies_to": {"service": "https"},
+      "why": "fingerprint the web stack with whatweb if installed"
+    },
+    {
+      "id": "http-nikto",
+      "name": "Web server scan (nikto)",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "nikto",
+      "applies_to": {"service": "http"},
+      "why": "run nikto for web-server misconfigurations/known issues if installed"
+    },
+    {
+      "id": "https-nikto",
+      "name": "Web server scan (nikto)",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "nikto",
+      "applies_to": {"service": "https"},
+      "why": "run nikto for web-server misconfigurations/known issues if installed"
+    },
+    {
+      "id": "http-ffuf",
+      "name": "Content fuzzing (ffuf)",
+      "phase": "scanning",
+      "category": "scan",
+      "tool": "ffuf",
+      "applies_to": {"service": "http"},
+      "why": "drive ffuf for fast wordlist content/parameter discovery if installed"
+    },
+    {
+      "id": "https-ffuf",
+      "name": "Content fuzzing (ffuf)",
+      "phase": "scanning",
+      "category": "scan",
+      "tool": "ffuf",
+      "applies_to": {"service": "https"},
+      "why": "drive ffuf for fast wordlist content/parameter discovery if installed"
+    },
+    {
+      "id": "http-wpscan",
+      "name": "WordPress scan (wpscan)",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "wpscan",
+      "applies_to": {"service": "http"},
+      "why": "scan WordPress for vulnerable core/plugins/users with wpscan if installed"
+    },
+    {
+      "id": "https-wpscan",
+      "name": "WordPress scan (wpscan)",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "wpscan",
+      "applies_to": {"service": "https"},
+      "why": "scan WordPress for vulnerable core/plugins/users with wpscan if installed"
+    },
+    {
+      "id": "endpoint-sqlmap",
+      "name": "Deep SQLi exploitation (sqlmap)",
+      "phase": "exploitation",
+      "category": "exploit",
+      "tool": "sqlmap",
+      "applies_to": {"asset_type": "endpoint"},
+      "why": "drive sqlmap for deep SQL-injection confirmation and data extraction (authorized; if installed)"
+    },
+    {
       "id": "ssh-enum",
       "name": "SSH banner and version assessment",
       "phase": "scanning",
