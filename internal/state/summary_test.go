@@ -82,7 +82,7 @@ func TestEmptyStateSummaryUnchanged(t *testing.T) {
 // Finding or Asset without classifying it for the quarantine boundary. This is
 // the regression that keeps Phase-2 (credential fields, dedup keys) honest.
 func TestFieldsClassified(t *testing.T) {
-	for _, typ := range []reflect.Type{reflect.TypeOf(Finding{}), reflect.TypeOf(Asset{})} {
+	for _, typ := range []reflect.Type{reflect.TypeOf(Finding{}), reflect.TypeOf(Asset{}), reflect.TypeOf(Credential{})} {
 		for i := 0; i < typ.NumField(); i++ {
 			f := typ.Field(i)
 			if f.Type.Kind() != reflect.String || f.PkgPath != "" {

@@ -16,14 +16,24 @@ import (
 // Report is the structured form of an engagement's results (the JSON export and
 // the source the Markdown renderer formats).
 type Report struct {
-	EngagementID string        `json:"engagement_id"`
-	Client       string        `json:"client"`
-	AuthorizedBy string        `json:"authorized_by"`
-	Agreement    string        `json:"agreement_ref"`
-	ScopeHash    string        `json:"scope_hash"`
-	Totals       Totals        `json:"totals"`
-	Findings     []FindingView `json:"findings"`
-	Assets       []AssetView   `json:"assets"`
+	EngagementID string           `json:"engagement_id"`
+	Client       string           `json:"client"`
+	AuthorizedBy string           `json:"authorized_by"`
+	Agreement    string           `json:"agreement_ref"`
+	ScopeHash    string           `json:"scope_hash"`
+	Totals       Totals           `json:"totals"`
+	Findings     []FindingView    `json:"findings"`
+	Assets       []AssetView      `json:"assets"`
+	Credentials  []CredentialView `json:"credentials,omitempty"`
+}
+
+// CredentialView is the report-facing projection of a recovered credential.
+type CredentialView struct {
+	Kind     string `json:"kind"`
+	Username string `json:"username,omitempty"`
+	Target   string `json:"target,omitempty"`
+	Source   string `json:"source,omitempty"`
+	Secret   string `json:"secret,omitempty"`
 }
 
 // Totals summarizes counts for the report header.
@@ -83,6 +93,11 @@ func Build(eng *engagement.Engagement, st *state.State) Report {
 			}
 		}
 		r.Findings = append(r.Findings, fv)
+	}
+	for _, c := range st.Credentials() {
+		r.Credentials = append(r.Credentials, CredentialView{
+			Kind: string(c.Kind), Username: c.Username, Target: c.Target, Source: c.Source, Secret: c.Secret,
+		})
 	}
 	for _, a := range st.Assets() {
 		r.Assets = append(r.Assets, AssetView{Type: a.Type, Value: a.Value, Attrs: a.Attrs})
@@ -164,6 +179,25 @@ func Render(eng *engagement.Engagement, st *state.State) string {
 
 	writeFindings("Validated findings", true)
 	writeFindings("Candidate findings (unvalidated)", false)
+
+	if len(r.Credentials) > 0 {
+		fmt.Fprintf(&b, "## Recovered credentials (%d)\n", len(r.Credentials))
+		for _, c := range r.Credentials {
+			fmt.Fprintf(&b, "- **%s**", c.Kind)
+			if c.Username != "" {
+				fmt.Fprintf(&b, " %s", c.Username)
+			}
+			if c.Target != "" {
+				fmt.Fprintf(&b, " @ %s", c.Target)
+			}
+			fmt.Fprintf(&b, " — `%s`", c.Secret)
+			if c.Source != "" {
+				fmt.Fprintf(&b, " (from %s)", c.Source)
+			}
+			b.WriteString("\n")
+		}
+		b.WriteString("\n")
+	}
 
 	b.WriteString("_The tamper-evident audit log records every decision and action; verify its hash chain to confirm this report matches what ran._\n")
 	return b.String()

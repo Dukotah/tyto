@@ -27,6 +27,7 @@ type State struct {
 	assets      map[string]*Asset
 	findings    []Finding
 	findingKeys map[string]bool // dedup: one logical issue = one finding
+	creds       credStore       // recovered credentials (see credential.go)
 }
 
 // New returns an empty State.

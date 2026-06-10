@@ -78,8 +78,11 @@ type Result struct {
 	// The engine persists them so the planner can pick service-specific follow-ups
 	// from State.Frontier() — computed deterministically in Go, never by the model
 	// parsing raw output.
-	Assets     []state.Asset
-	Err        string
-	StartedAt  time.Time
-	FinishedAt time.Time
+	Assets []state.Asset
+	// Credentials are secrets recovered by the tool (creds/hashes/tokens/keys).
+	// The engine records them to state + (redacted) to the audit log.
+	Credentials []state.Credential
+	Err         string
+	StartedAt   time.Time
+	FinishedAt  time.Time
 }

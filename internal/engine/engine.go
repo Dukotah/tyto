@@ -283,6 +283,16 @@ func (e *Engine) handle(ctx context.Context, a action.Action) (bool, error) {
 			newAsset = true
 		}
 	}
+	newCred := false
+	for _, c := range res.Credentials {
+		if e.state.AddCredential(c) {
+			newCred = true
+			// Audit the recovery, but REDACTED — never the plaintext secret.
+			if err := e.rec("credential", c.Redacted()); err != nil {
+				return false, err
+			}
+		}
+	}
 	if err := e.rec("result", map[string]any{
 		"action": a.ID, "success": res.Success, "output": res.Output,
 		"findings": len(res.Findings), "assets": len(res.Assets),
@@ -293,6 +303,6 @@ func (e *Engine) handle(ctx context.Context, a action.Action) (bool, error) {
 		fmt.Fprintf(e.out, "  DONE  %-12s %-22s — %s\n", a.Tool, a.Target, res.Output)
 	}
 	e.emit(Event{Kind: "result", Tool: a.Tool, Target: a.Target, Message: res.Output})
-	// Progress = a novel action that ran successfully, or any new asset/finding.
-	return res.Success || newFinding || newAsset, nil
+	// Progress = a novel action that ran successfully, or any new asset/finding/cred.
+	return res.Success || newFinding || newAsset || newCred, nil
 }

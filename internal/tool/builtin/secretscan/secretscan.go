@@ -105,14 +105,17 @@ func (t *Tool) Execute(ctx context.Context, a action.Action) (action.Result, err
 	// (type, redacted-evidence) -> already emitted.
 	seen := map[string]bool{}
 	var findings []state.Finding
-	findings = append(findings, scan(target, body, seen)...)
+	var creds []state.Credential
+	f, c := scan(target, body, seen)
+	findings, creds = append(findings, f...), append(creds, c...)
 
 	for _, src := range sameHostScripts(target, body) {
 		js, err := t.fetch(ctx, src)
 		if err != nil {
 			continue // a missing/unreachable script must not fail the scan
 		}
-		findings = append(findings, scan(src, js, seen)...)
+		f, c := scan(src, js, seen)
+		findings, creds = append(findings, f...), append(creds, c...)
 	}
 
 	for i := range findings {
@@ -121,6 +124,7 @@ func (t *Tool) Execute(ctx context.Context, a action.Action) (action.Result, err
 		findings[i].FoundAt = time.Now().UTC()
 	}
 	res.Findings = findings
+	res.Credentials = creds
 
 	res.Success = true
 	res.Output = fmt.Sprintf("%s: scanned for secrets, %d finding(s)", target, len(findings))
@@ -147,9 +151,10 @@ func (t *Tool) fetch(ctx context.Context, url string) ([]byte, error) {
 // scan runs every pattern over body and returns deduped, redacted findings.
 // seen is shared across sources so identical (type, redacted-evidence) pairs
 // are emitted only once per Execute.
-func scan(source string, body []byte, seen map[string]bool) []state.Finding {
+func scan(source string, body []byte, seen map[string]bool) ([]state.Finding, []state.Credential) {
 	s := string(body)
 	var out []state.Finding
+	var creds []state.Credential
 	for _, p := range patterns {
 		genericCount := 0
 		for _, m := range p.re.FindAllString(s, -1) {
@@ -175,9 +180,17 @@ func scan(source string, body []byte, seen map[string]bool) []state.Finding {
 				Evidence:    evidence,
 				Validated:   true, // we directly read the match out of the live body
 			})
+			// Record it in the credential model too (redacted secret, per this
+			// tool's never-store-plaintext stance).
+			creds = append(creds, state.Credential{
+				Kind:   state.CredToken,
+				Secret: evidence,
+				Source: source,
+				Target: source,
+			})
 		}
 	}
-	return out
+	return out, creds
 }
 
 // redact returns a non-reversible snippet: the pattern type plus the first 4
