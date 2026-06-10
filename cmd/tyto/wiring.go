@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/dukotah/tyto/internal/guard"
 	"github.com/dukotah/tyto/internal/tool"
+	"github.com/dukotah/tyto/internal/tool/builtin/cmdexec"
 	"github.com/dukotah/tyto/internal/tool/builtin/corscheck"
 	"github.com/dukotah/tyto/internal/tool/builtin/dnsenum"
 	"github.com/dukotah/tyto/internal/tool/builtin/emailsec"
@@ -12,6 +13,7 @@ import (
 	"github.com/dukotah/tyto/internal/tool/builtin/portscan"
 	"github.com/dukotah/tyto/internal/tool/builtin/redircheck"
 	"github.com/dukotah/tyto/internal/tool/builtin/secretscan"
+	"github.com/dukotah/tyto/internal/tool/builtin/sqliexploit"
 	"github.com/dukotah/tyto/internal/tool/builtin/sshcheck"
 	"github.com/dukotah/tyto/internal/tool/builtin/subtakeover"
 	"github.com/dukotah/tyto/internal/tool/builtin/tlscheck"
@@ -42,6 +44,10 @@ func defaultRegistry() *tool.Registry {
 	r.MustRegister(secretscan.New())
 	r.MustRegister(wafdetect.New())
 	r.MustRegister(subtakeover.New())
+	// Exploitation tier (exploit-category, RiskHigh) — the Scope Guard only lets
+	// these run with a verified authorization grant for the target.
+	r.MustRegister(cmdexec.New())
+	r.MustRegister(sqliexploit.New())
 	return r
 }
 

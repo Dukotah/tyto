@@ -145,6 +145,24 @@
       "why": "test a parameterized endpoint for XSS, SQL injection, path traversal, and command injection"
     },
     {
+      "id": "endpoint-sqli-extract",
+      "name": "SQLi data extraction (impact)",
+      "phase": "exploitation",
+      "category": "exploit",
+      "tool": "sqliexploit",
+      "applies_to": {"asset_type": "endpoint"},
+      "why": "demonstrate SQL-injection impact by extracting DB version/user/data (authorized targets only)"
+    },
+    {
+      "id": "endpoint-rce",
+      "name": "Command execution (impact)",
+      "phase": "exploitation",
+      "category": "exploit",
+      "tool": "cmdexec",
+      "applies_to": {"asset_type": "endpoint"},
+      "why": "demonstrate command-injection impact by executing commands and capturing output (authorized targets only)"
+    },
+    {
       "id": "endpoint-open-redirect",
       "name": "Open redirect testing",
       "phase": "exploitation",
