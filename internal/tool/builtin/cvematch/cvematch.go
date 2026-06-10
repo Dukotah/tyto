@@ -267,6 +267,11 @@ func indexPath(a action.Action) string {
 	if p := strings.TrimSpace(os.Getenv("TYTO_CVE_INDEX")); p != "" {
 		return p
 	}
+	// If the caller pinned an explicit feed dir, honor it (scan those feeds) rather
+	// than silently falling back to the global default index.
+	if strings.TrimSpace(a.Params["nvd"]) != "" {
+		return ""
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""

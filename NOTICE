@@ -1,0 +1,88 @@
+tyto
+Copyright (c) the tyto authors.
+
+This product includes third-party software. The notices below distinguish
+between (1) Go dependencies that are COMPILED/LINKED into the tyto binary
+(their licenses apply to the distributed binary) and (2) OPTIONAL EXTERNAL
+TOOLS that tyto invokes as separate processes at runtime (never linked or
+embedded; their licenses do NOT attach to the tyto binary).
+
+================================================================================
+1. EMBEDDED / LINKED GO DEPENDENCIES
+   (statically compiled into the tyto binary; see go.mod)
+================================================================================
+
+gopkg.in/yaml.v3                          v3.0.1
+    License: MIT (yaml package) and Apache-2.0 (the embedded libyaml-derived
+    portions). Dual-noticed by upstream; both notices apply.
+
+golang.org/x/net                          v0.55.0
+    License: BSD-3-Clause
+golang.org/x/sync                         v0.21.0
+    License: BSD-3-Clause
+golang.org/x/time                         v0.15.0
+    License: BSD-3-Clause
+golang.org/x/sys                          v0.45.0   (indirect)
+    License: BSD-3-Clause
+
+github.com/spf13/cobra                    v1.10.2
+    License: Apache-2.0
+github.com/spf13/pflag                    v1.0.9    (indirect)
+    License: BSD-3-Clause
+github.com/inconshreveable/mousetrap      v1.1.0    (indirect)
+    License: Apache-2.0
+
+github.com/ncruces/go-sqlite3             v0.34.4   (indirect)
+    License: MIT
+github.com/ncruces/go-sqlite3-wasm/v2     v2.6.35302 (indirect)
+    License: MIT
+    Note: ships a precompiled SQLite WebAssembly module. SQLite itself is in
+    the public domain (https://www.sqlite.org/copyright.html); the Go wrapper
+    and the WASM packaging are MIT.
+github.com/ncruces/julianday             v1.0.0    (indirect)
+    License: MIT
+
+github.com/ulikunitz/xz                   v0.5.15   (indirect)
+    License: BSD-3-Clause
+
+Full license texts for each module are available in the module source under
+the module's repository (typically LICENSE / LICENSE.md / COPYING).
+
+--------------------------------------------------------------------------------
+License summary (embedded):
+  MIT            : gopkg.in/yaml.v3 (in part), ncruces/go-sqlite3,
+                   ncruces/go-sqlite3-wasm, ncruces/julianday
+  Apache-2.0     : gopkg.in/yaml.v3 (in part), spf13/cobra,
+                   inconshreveable/mousetrap
+  BSD-3-Clause   : golang.org/x/{net,sync,time,sys}, spf13/pflag, ulikunitz/xz
+  Public Domain  : SQLite engine (via the WASM module above)
+--------------------------------------------------------------------------------
+
+================================================================================
+2. OPTIONAL EXTERNAL TOOLS (NOT EMBEDDED, NOT LINKED)
+================================================================================
+
+tyto can orchestrate the following third-party tools when they are present on
+the host. They are executed as independent operating-system processes via the
+shell / exec. tyto does NOT bundle, statically link, or redistribute them, and
+their code is never compiled into the tyto binary. Each tool remains governed
+solely by its own license; obtaining and using these tools is the operator's
+responsibility.
+
+nuclei-templates (ProjectDiscovery)
+    License: MIT
+    Used as a data set (YAML templates) cloned by the operator; read at
+    runtime, not embedded.
+
+searchsploit / Exploit-DB (OffSec)
+    License: GPL-2.0 (searchsploit tool); the Exploit-DB content carries its
+    own per-entry terms. Invoked as an external command.
+
+NetExec (formerly CrackMapExec / crackmapexec)
+    License: BSD-2-Clause (NetExec). The legacy crackmapexec project was
+    BSD-2-Clause as well. Invoked as an external command.
+
+Because these tools run out-of-process and are neither linked nor
+redistributed with tyto, their licenses (including any copyleft terms such as
+GPL-2.0 for searchsploit) do not extend to or impose obligations on the tyto
+binary. This embed-vs-shell-out boundary is intentional.
