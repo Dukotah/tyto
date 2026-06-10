@@ -202,6 +202,14 @@
   .msg.ai{align-self:flex-start; background:var(--bubble-ai); border:1px solid var(--border2); border-bottom-left-radius:3px}
   .msg.ai.thinking{color:var(--muted); font-style:italic}
   .msg.ai.errmsg{border-color:rgba(232,89,12,.5); color:var(--high)}
+  .msg.sysnote{align-self:center; max-width:90%; text-align:center; background:rgba(88,166,255,.08);
+    border:1px solid rgba(88,166,255,.4); color:var(--accent2); font-weight:600; font-size:12px; border-radius:8px}
+  .msg.sysnote.stopnote{background:rgba(240,140,0,.09); border-color:var(--hold); color:var(--hold)}
+  .chatctl{display:flex; gap:16px; align-items:flex-end; flex-wrap:wrap; margin:0 0 12px}
+  .chatctl-eng{display:flex; flex-direction:column}
+  .chatctl-eng select{min-width:280px}
+  .chatctl-approve{display:flex; align-items:center; gap:7px; margin:0; color:var(--text); cursor:pointer; white-space:nowrap; padding-bottom:8px}
+  .chatctl-approve input{cursor:pointer}
   .msg .who{font-size:10px; text-transform:uppercase; letter-spacing:.6px; color:var(--muted); margin-bottom:3px; font-weight:700}
   .chatinput{display:flex; gap:9px; padding:12px 14px; border-top:1px solid var(--border); background:var(--bg2)}
   .chatinput textarea{flex:1; min-width:0; resize:none; min-height:42px; max-height:140px}
@@ -261,6 +269,16 @@
   <section id="panel-chat" class="panel flexcol">
     <h2>Chat</h2>
     <p class="chathelp">Ask about findings, request next steps, or tell it what to focus on. (Authorized scope only.)</p>
+    <div class="chatctl">
+      <div class="chatctl-eng">
+        <label for="chatEngSelect">Engagement (authorized scope)</label>
+        <select id="chatEngSelect"></select>
+      </div>
+      <label class="chatctl-approve" for="chatRequireApproval">
+        <input type="checkbox" id="chatRequireApproval" checked>
+        Require approval
+      </label>
+    </div>
     <div class="chatwrap">
       <div class="chatlog" id="chatLog">
         <div class="chatempty" id="chatEmpty">No messages yet. Ask the operator something to get started.</div>
@@ -270,6 +288,7 @@
         <button type="button" class="btn" id="chatSend">Send</button>
       </div>
     </div>
+    <p class="chathelp" id="chatActHelp">Ask questions, or tell it to act — e.g. 'run a full assessment', 'focus on the login page', 'stop'. Acts only within the selected authorized engagement.</p>
   </section>
 
   <!-- ===================== RUN ===================== -->
@@ -736,26 +755,46 @@ function setFormDisabled(disabled){
   else form.removeAttribute("disabled");
 }
 
+function fillEngSelect(sel, list){
+  sel.textContent = "";
+  if (!Array.isArray(list) || list.length === 0){
+    sel.appendChild(el("option", "", "(no engagements found)"));
+    return;
+  }
+  list.forEach(eng => {
+    const o = el("option", "", (eng.id || "?") + " — " + (eng.client || ""));
+    o.value = eng.path;
+    sel.appendChild(o);
+  });
+}
+
 async function loadEngagements(){
   const sel = $("engSelect");
+  const chatSel = $("chatEngSelect");
   try {
     const list = await getJSON("/api/engagements");
-    sel.textContent = "";
-    if (!Array.isArray(list) || list.length === 0){
-      sel.appendChild(el("option", "", "(no engagements found)"));
-      return;
-    }
-    list.forEach(eng => {
-      const o = el("option", "", (eng.id || "?") + " — " + (eng.client || ""));
-      o.value = eng.path;
-      sel.appendChild(o);
-    });
+    fillEngSelect(sel, list);
+    fillEngSelect(chatSel, list);
   } catch (e) {
     sel.textContent = "";
     sel.appendChild(el("option", "", "(failed to load)"));
+    chatSel.textContent = "";
+    chatSel.appendChild(el("option", "", "(failed to load)"));
     showErr($("runErr"), "Could not load engagements: " + e.message);
   }
 }
+
+// keep the Run + Chat engagement selectors loosely in sync
+$("engSelect").addEventListener("change", () => {
+  const v = $("engSelect").value;
+  const chatSel = $("chatEngSelect");
+  if (v && [...chatSel.options].some(o => o.value === v)) chatSel.value = v;
+});
+$("chatEngSelect").addEventListener("change", () => {
+  const v = $("chatEngSelect").value;
+  const sel = $("engSelect");
+  if (v && [...sel.options].some(o => o.value === v)) sel.value = v;
+});
 
 $("runForm").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -830,6 +869,19 @@ function addChatBubble(role, content, extraCls){
   return b;
 }
 
+// centered system note bubble (not part of model history)
+function addChatSysNote(content, extraCls){
+  const empty = $("chatEmpty");
+  if (empty) empty.remove();
+  const cls = "msg sysnote" + (extraCls ? " " + extraCls : "");
+  const b = el("div", cls);
+  b.appendChild(el("div", "content", content)); // server/derived strings via textContent in el()
+  const log = $("chatLog");
+  log.appendChild(b);
+  log.scrollTop = log.scrollHeight;
+  return b;
+}
+
 async function sendChat(){
   if (chatBusy) return;
   const input = $("chatInput");
@@ -851,7 +903,12 @@ async function sendChat(){
     const r = await fetch("/api/chat", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({message: message, history: historySnapshot})
+      body: JSON.stringify({
+        message: message,
+        history: historySnapshot,
+        engagement: $("chatEngSelect").value,
+        requireApproval: $("chatRequireApproval").checked
+      })
     });
     const data = await r.json().catch(() => ({}));
     placeholder.remove();
@@ -861,6 +918,20 @@ async function sendChat(){
       const reply = (data.reply != null) ? String(data.reply) : "(no reply)";
       addChatBubble("assistant", reply);
       chatHistory.push({role: "assistant", content: reply});
+      if (data.started === true){
+        addChatSysNote("▶ Engagement started — switching to Dashboard");
+        // wire the live feed up to the run the assistant just launched
+        liveCount = 0; $("liveCount").textContent = "0";
+        feedClear();
+        feedLine("muted", "▶", "", "Run started from chat…");
+        setFormDisabled(true);
+        setStopButtons(true);
+        setStatus("running");
+        openEvents();
+        showTab("dashboard"); // watch it run live
+      } else if (data.stopped === true){
+        addChatSysNote("■ Run stopped", "stopnote");
+      }
     }
   } catch (err) {
     placeholder.remove();
