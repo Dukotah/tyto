@@ -380,7 +380,7 @@ func (c *console) handleChat(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), 240*time.Second)
 	defer cancel()
-	reply, err := client.Generate(ctx, system, b.String())
+	reply, err := client.Chat(ctx, system, b.String())
 	if err != nil {
 		writeJSON(w, map[string]any{"error": "chat: " + err.Error()})
 		return

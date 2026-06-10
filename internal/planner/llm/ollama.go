@@ -59,6 +59,12 @@ func (o *Ollama) Generate(ctx context.Context, system, user string) (string, err
 	return o.generate(ctx, system, user, json.RawMessage(`"json"`))
 }
 
+// Chat generates a free-form natural-language reply (no JSON/grammar
+// constraint) — for the operator-facing console assistant, not planning.
+func (o *Ollama) Chat(ctx context.Context, system, user string) (string, error) {
+	return o.generate(ctx, system, user, nil)
+}
+
 // GenerateSchema implements SchemaClient: it sends the JSON Schema as the format,
 // which Ollama turns into a token-level grammar so the output is valid by
 // construction. An empty schema falls back to the plain JSON hint.
