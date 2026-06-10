@@ -13,10 +13,13 @@ import (
 	"github.com/dukotah/tyto/internal/tool/builtin/exploitdb"
 	"github.com/dukotah/tyto/internal/tool/builtin/ffufadapter"
 	"github.com/dukotah/tyto/internal/tool/builtin/ftpcheck"
+	"github.com/dukotah/tyto/internal/tool/builtin/gobuster"
 	"github.com/dukotah/tyto/internal/tool/builtin/httpmethods"
 	"github.com/dukotah/tyto/internal/tool/builtin/httpprobe"
+	"github.com/dukotah/tyto/internal/tool/builtin/hydra"
 	"github.com/dukotah/tyto/internal/tool/builtin/jwtcheck"
 	"github.com/dukotah/tyto/internal/tool/builtin/login"
+	"github.com/dukotah/tyto/internal/tool/builtin/metasploit"
 	"github.com/dukotah/tyto/internal/tool/builtin/niktoadapter"
 	"github.com/dukotah/tyto/internal/tool/builtin/nmapscan"
 	"github.com/dukotah/tyto/internal/tool/builtin/nucleiscan"
@@ -28,8 +31,10 @@ import (
 	"github.com/dukotah/tyto/internal/tool/builtin/sqlmapadapter"
 	"github.com/dukotah/tyto/internal/tool/builtin/sshcheck"
 	"github.com/dukotah/tyto/internal/tool/builtin/ssti"
+	"github.com/dukotah/tyto/internal/tool/builtin/subfinder"
 	"github.com/dukotah/tyto/internal/tool/builtin/subtakeover"
 	"github.com/dukotah/tyto/internal/tool/builtin/templatescan"
+	"github.com/dukotah/tyto/internal/tool/builtin/testssladapter"
 	"github.com/dukotah/tyto/internal/tool/builtin/tlscheck"
 	"github.com/dukotah/tyto/internal/tool/builtin/wafdetect"
 	"github.com/dukotah/tyto/internal/tool/builtin/webcheck"
@@ -81,6 +86,11 @@ func defaultRegistry() *tool.Registry {
 	r.MustRegister(whatweb.New())
 	r.MustRegister(wpscanadapter.New())
 	r.MustRegister(sqlmapadapter.New())
+	r.MustRegister(subfinder.New())
+	r.MustRegister(testssladapter.New())
+	r.MustRegister(gobuster.New())
+	r.MustRegister(hydra.New())
+	r.MustRegister(metasploit.New())
 	return r
 }
 

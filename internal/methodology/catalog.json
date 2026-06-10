@@ -433,6 +433,69 @@
       "why": "drive sqlmap for deep SQL-injection confirmation and data extraction (authorized; if installed)"
     },
     {
+      "id": "domain-subfinder",
+      "name": "Subdomain enumeration (subfinder)",
+      "phase": "recon",
+      "category": "recon",
+      "tool": "subfinder",
+      "applies_to": {"asset_type": "domain"},
+      "why": "passively enumerate subdomains with subfinder if installed"
+    },
+    {
+      "id": "https-testssl",
+      "name": "Deep TLS assessment (testssl)",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "testssl",
+      "applies_to": {"service": "https"},
+      "why": "run testssl.sh for deep TLS/crypto issues if installed"
+    },
+    {
+      "id": "http-gobuster",
+      "name": "Content/vhost/DNS brute (gobuster)",
+      "phase": "scanning",
+      "category": "scan",
+      "tool": "gobuster",
+      "applies_to": {"service": "http"},
+      "why": "drive gobuster for dir/dns/vhost discovery if installed"
+    },
+    {
+      "id": "https-gobuster",
+      "name": "Content/vhost/DNS brute (gobuster)",
+      "phase": "scanning",
+      "category": "scan",
+      "tool": "gobuster",
+      "applies_to": {"service": "https"},
+      "why": "drive gobuster for dir/dns/vhost discovery if installed"
+    },
+    {
+      "id": "ssh-hydra",
+      "name": "Credential attack (hydra)",
+      "phase": "exploitation",
+      "category": "identity",
+      "tool": "hydra",
+      "applies_to": {"service": "ssh"},
+      "why": "drive hydra for SSH credential attacks (authorized; lockout-conscious; if installed)"
+    },
+    {
+      "id": "ftp-hydra",
+      "name": "Credential attack (hydra)",
+      "phase": "exploitation",
+      "category": "identity",
+      "tool": "hydra",
+      "applies_to": {"service": "ftp"},
+      "why": "drive hydra for FTP credential attacks (authorized; lockout-conscious; if installed)"
+    },
+    {
+      "id": "endpoint-metasploit",
+      "name": "Exploit module (metasploit)",
+      "phase": "exploitation",
+      "category": "exploit",
+      "tool": "metasploit",
+      "applies_to": {"asset_type": "endpoint"},
+      "why": "run an operator-directed Metasploit module for exploit delivery (authorized; if installed)"
+    },
+    {
       "id": "ssh-enum",
       "name": "SSH banner and version assessment",
       "phase": "scanning",
