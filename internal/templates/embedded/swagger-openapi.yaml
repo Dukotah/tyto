@@ -1,0 +1,18 @@
+id: exposed-swagger-openapi
+info:
+  name: Exposed Swagger/OpenAPI Definition
+  severity: low
+  description: A Swagger or OpenAPI specification is publicly accessible, disclosing the full API surface.
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/swagger.json"
+      - "{{BaseURL}}/openapi.json"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        part: body
+        words: ["swagger", "openapi"]
+        condition: or

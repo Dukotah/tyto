@@ -1,0 +1,17 @@
+id: apache-server-status
+info:
+  name: Exposed Apache server-status
+  severity: medium
+  description: The Apache mod_status page is publicly accessible, disclosing active requests, client IPs, and server internals.
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/server-status"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        part: body
+        words: ["Apache Server Status", "Server uptime"]
+        condition: or

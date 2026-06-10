@@ -1,0 +1,18 @@
+id: exposed-config-php-bak
+info:
+  name: Exposed config.php Backup
+  severity: medium
+  description: A backup of config.php is publicly readable and may expose database credentials and application secrets.
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/config.php.bak"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: regex
+        part: body
+        regex:
+          - "(?i)(<\\?php|define\\(|DB_PASSWORD|DB_USER|password)"
+        condition: or

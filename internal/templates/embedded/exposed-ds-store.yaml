@@ -1,0 +1,17 @@
+id: exposed-ds-store
+info:
+  name: Exposed .DS_Store
+  severity: low
+  description: A macOS .DS_Store file is publicly readable, leaking directory and file names.
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/.DS_Store"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        part: body
+        words: ["Bud1"]
+        condition: or

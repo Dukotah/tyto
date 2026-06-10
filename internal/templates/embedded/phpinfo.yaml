@@ -1,0 +1,18 @@
+id: exposed-phpinfo
+info:
+  name: Exposed phpinfo()
+  severity: medium
+  description: A phpinfo() page is publicly accessible, disclosing PHP configuration, modules, and server paths.
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/phpinfo.php"
+      - "{{BaseURL}}/info.php"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        part: body
+        words: ["phpinfo()", "PHP Version"]
+        condition: or

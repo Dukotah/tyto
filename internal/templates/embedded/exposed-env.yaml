@@ -1,0 +1,18 @@
+id: exposed-env-file
+info:
+  name: Exposed .env File
+  severity: high
+  description: An environment file is publicly readable and may contain credentials, API keys, or database secrets.
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/.env"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: regex
+        part: body
+        regex:
+          - "(?i)(DB_PASSWORD|APP_KEY|SECRET|API_KEY|AWS_ACCESS_KEY)"
+        condition: or

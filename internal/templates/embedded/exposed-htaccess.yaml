@@ -1,0 +1,18 @@
+id: exposed-htaccess
+info:
+  name: Exposed .htaccess
+  severity: medium
+  description: An Apache .htaccess file is publicly readable, leaking rewrite rules, access controls, and protected paths.
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/.htaccess"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: regex
+        part: body
+        regex:
+          - "(?i)(RewriteEngine|RewriteRule|AuthType|Require|<FilesMatch|Order allow)"
+        condition: or

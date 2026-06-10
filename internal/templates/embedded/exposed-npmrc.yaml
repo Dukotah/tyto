@@ -1,0 +1,18 @@
+id: exposed-npmrc
+info:
+  name: Exposed .npmrc
+  severity: medium
+  description: An npm configuration file is publicly readable and may contain registry auth tokens.
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/.npmrc"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: regex
+        part: body
+        regex:
+          - "(?i)(_authToken|registry=|//.*:_password|always-auth)"
+        condition: or

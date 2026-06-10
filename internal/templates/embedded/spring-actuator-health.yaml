@@ -1,0 +1,17 @@
+id: spring-actuator-health
+info:
+  name: Spring Boot Actuator Health Endpoint
+  severity: medium
+  description: A Spring Boot Actuator health endpoint is publicly accessible, which often indicates other actuator endpoints are exposed.
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/actuator/health"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        part: body
+        words: ["status"]
+        condition: or

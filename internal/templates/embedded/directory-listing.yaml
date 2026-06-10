@@ -1,0 +1,17 @@
+id: directory-listing
+info:
+  name: Directory Listing Enabled
+  severity: medium
+  description: The web server returns an automatic directory index, disclosing file names that should not be browsable.
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        part: body
+        words: ["Index of /", "Directory listing for"]
+        condition: or

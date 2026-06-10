@@ -91,6 +91,24 @@
       "why": "scan response bodies and same-host JS for exposed API keys and secrets"
     },
     {
+      "id": "http-template-scan",
+      "name": "Template scan (exposures/CVEs)",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "templatescan",
+      "applies_to": {"service": "http"},
+      "why": "run the embedded Nuclei-style template pack for known exposures and misconfigurations"
+    },
+    {
+      "id": "https-template-scan",
+      "name": "Template scan (exposures/CVEs)",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "templatescan",
+      "applies_to": {"service": "https"},
+      "why": "run the embedded Nuclei-style template pack for known exposures and misconfigurations"
+    },
+    {
       "id": "https-secret-scan",
       "name": "Secret scan (response/JS)",
       "phase": "vuln-analysis",
