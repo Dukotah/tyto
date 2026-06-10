@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"time"
 
 	"github.com/dukotah/tyto/internal/action"
 	"github.com/dukotah/tyto/internal/audit"
@@ -17,6 +18,22 @@ import (
 	"github.com/dukotah/tyto/internal/state"
 	"github.com/dukotah/tyto/internal/tool"
 )
+
+// Event is a structured progress event emitted during a run, for live UIs
+// (the web console subscribes to these). Emitting is opt-in via Options.OnEvent;
+// CLI runs leave it nil and pay nothing.
+type Event struct {
+	Kind     string    `json:"kind"` // cycle|action|decision|result|finding|done|error|log
+	Cycle    int       `json:"cycle,omitempty"`
+	Tool     string    `json:"tool,omitempty"`
+	Target   string    `json:"target,omitempty"`
+	Verdict  string    `json:"verdict,omitempty"`
+	Reason   string    `json:"reason,omitempty"`
+	Severity string    `json:"severity,omitempty"`
+	Title    string    `json:"title,omitempty"`
+	Message  string    `json:"message,omitempty"`
+	Time     time.Time `json:"time"`
+}
 
 // Options tune one engine run.
 type Options struct {
@@ -31,6 +48,10 @@ type Options struct {
 	// (from a resumed snapshot); they are pre-seeded as "seen" so resume doesn't
 	// re-execute them.
 	PriorActionKeys []string
+	// OnEvent, if set, receives a structured Event at each step of the loop (for
+	// live monitoring). It is called synchronously on the run goroutine, so it
+	// must not block; the web console hands off to a buffered channel.
+	OnEvent func(Event)
 }
 
 // Engine coordinates one engagement.
@@ -79,6 +100,15 @@ func (e *Engine) CompletedActionKeys() []string {
 	return keys
 }
 
+// emit sends a structured progress event if a listener is attached (no-op for
+// CLI runs). Time is stamped here.
+func (e *Engine) emit(ev Event) {
+	if e.opts.OnEvent != nil {
+		ev.Time = time.Now().UTC()
+		e.opts.OnEvent(ev)
+	}
+}
+
 // rec writes an audit entry and fails closed: if the load-bearing audit trail
 // can't be written, the run must stop rather than continue unrecorded.
 func (e *Engine) rec(kind string, data map[string]any) error {
@@ -113,13 +143,16 @@ func (e *Engine) Run(ctx context.Context) error {
 			return err
 		}
 		fmt.Fprintf(e.out, "\n── cycle %d/%d ──\n", c, cycles)
+		e.emit(Event{Kind: "cycle", Cycle: c})
 
 		actions, err := e.planner.Plan(ctx, e.eng, e.state, e.tools.Names())
 		if err != nil {
+			e.emit(Event{Kind: "error", Cycle: c, Message: fmt.Sprintf("planner error: %v", err)})
 			return fmt.Errorf("cycle %d: %w", c, err)
 		}
 		if len(actions) == 0 {
 			fmt.Fprintln(e.out, "planner proposed no further actions; stopping.")
+			e.emit(Event{Kind: "log", Message: "planner proposed no further actions; stopping"})
 			break
 		}
 
@@ -155,6 +188,7 @@ func (e *Engine) Run(ctx context.Context) error {
 		return err
 	}
 	fmt.Fprintf(e.out, "\naudit head: %s\n", e.audit.Head())
+	e.emit(Event{Kind: "done", Message: "audit head " + e.audit.Head()})
 	return nil
 }
 
@@ -175,6 +209,7 @@ func (e *Engine) handle(ctx context.Context, a action.Action) (bool, error) {
 		})
 	}
 	e.seen[key] = true
+	e.emit(Event{Kind: "action", Tool: a.Tool, Target: a.Target, Message: a.Rationale})
 
 	dec := e.guard.Evaluate(a)
 	// a.Category / a.Risk are the model's SELF-DECLARED values, recorded for
@@ -186,6 +221,7 @@ func (e *Engine) handle(ctx context.Context, a action.Action) (bool, error) {
 	}); err != nil {
 		return false, err
 	}
+	e.emit(Event{Kind: "decision", Tool: a.Tool, Target: a.Target, Verdict: dec.Verdict.String(), Reason: dec.Reason})
 
 	switch dec.Verdict {
 	case guard.VerdictDeny:
@@ -237,6 +273,7 @@ func (e *Engine) handle(ctx context.Context, a action.Action) (bool, error) {
 	for _, f := range res.Findings {
 		if e.state.AddFinding(f) {
 			newFinding = true
+			e.emit(Event{Kind: "finding", Severity: f.Severity.String(), Title: f.Title, Target: f.Target, Tool: f.Tool})
 		}
 	}
 	newAsset := false
@@ -255,6 +292,7 @@ func (e *Engine) handle(ctx context.Context, a action.Action) (bool, error) {
 	if res.Output != "" {
 		fmt.Fprintf(e.out, "  DONE  %-12s %-22s — %s\n", a.Tool, a.Target, res.Output)
 	}
+	e.emit(Event{Kind: "result", Tool: a.Tool, Target: a.Target, Message: res.Output})
 	// Progress = a novel action that ran successfully, or any new asset/finding.
 	return res.Success || newFinding || newAsset, nil
 }
