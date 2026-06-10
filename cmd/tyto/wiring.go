@@ -5,6 +5,7 @@ import (
 	"github.com/dukotah/tyto/internal/tool"
 	"github.com/dukotah/tyto/internal/tool/builtin/cmdexec"
 	"github.com/dukotah/tyto/internal/tool/builtin/corscheck"
+	"github.com/dukotah/tyto/internal/tool/builtin/defaultcreds"
 	"github.com/dukotah/tyto/internal/tool/builtin/dnsenum"
 	"github.com/dukotah/tyto/internal/tool/builtin/emailsec"
 	"github.com/dukotah/tyto/internal/tool/builtin/ftpcheck"
@@ -50,6 +51,7 @@ func defaultRegistry() *tool.Registry {
 	// these run with a verified authorization grant for the target.
 	r.MustRegister(cmdexec.New())
 	r.MustRegister(sqliexploit.New())
+	r.MustRegister(defaultcreds.New())
 	return r
 }
 

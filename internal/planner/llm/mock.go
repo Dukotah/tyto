@@ -46,6 +46,7 @@ func NewScriptedMock(targets []string) *Mock {
 			// is authorized for exploit/high-risk on the target.
 			fmt.Sprintf(`{"tool":"sqliexploit","category":"exploit","target":%q,"risk":"high","params":{},"rationale":"extract data to prove SQLi impact"}`, t),
 			fmt.Sprintf(`{"tool":"cmdexec","category":"exploit","target":%q,"risk":"high","params":{},"rationale":"execute commands to prove RCE impact"}`, t),
+			fmt.Sprintf(`{"tool":"defaultcreds","category":"identity","target":%q,"risk":"high","params":{},"rationale":"test for default credentials"}`, t),
 		)
 	}
 	return &Mock{Responses: []string{

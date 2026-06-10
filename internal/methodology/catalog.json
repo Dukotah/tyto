@@ -181,6 +181,24 @@
       "why": "demonstrate command-injection impact by executing commands and capturing output (authorized targets only)"
     },
     {
+      "id": "http-default-creds",
+      "name": "Default credential testing",
+      "phase": "exploitation",
+      "category": "identity",
+      "tool": "defaultcreds",
+      "applies_to": {"service": "http"},
+      "why": "test HTTP auth for accepted default credentials (authorized targets only)"
+    },
+    {
+      "id": "https-default-creds",
+      "name": "Default credential testing",
+      "phase": "exploitation",
+      "category": "identity",
+      "tool": "defaultcreds",
+      "applies_to": {"service": "https"},
+      "why": "test HTTP auth for accepted default credentials (authorized targets only)"
+    },
+    {
       "id": "endpoint-open-redirect",
       "name": "Open redirect testing",
       "phase": "exploitation",
