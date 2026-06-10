@@ -35,6 +35,9 @@ func NewScriptedMock(targets []string) *Mock {
 	for _, t := range targets {
 		scan = append(scan, fmt.Sprintf(`{"tool":"portscan","category":"scan","target":%q,"risk":"medium","params":{},"rationale":"enumerate services"}`, t))
 		web = append(web,
+			// Authenticate first (engine fills creds from provisioned credentials);
+			// the established session is then replayed to the web tools below.
+			fmt.Sprintf(`{"tool":"login","category":"identity","target":%q,"risk":"medium","params":{},"rationale":"establish an authenticated session"}`, t),
 			fmt.Sprintf(`{"tool":"httpprobe","category":"recon","target":%q,"risk":"low","params":{},"rationale":"fingerprint http"}`, t),
 			fmt.Sprintf(`{"tool":"webcheck","category":"scan","target":%q,"risk":"low","params":{},"rationale":"safe web checks"}`, t),
 			fmt.Sprintf(`{"tool":"webdiscover","category":"scan","target":%q,"risk":"low","params":{},"rationale":"sensitive-path discovery"}`, t),

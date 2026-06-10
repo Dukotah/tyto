@@ -340,7 +340,9 @@ func (e *Engine) handle(ctx context.Context, a action.Action) (bool, error) {
 	}
 	// Capture an established session so later actions against the host inherit it.
 	if res.Session != nil && res.Session.Cookie != "" {
-		e.sessions[res.Session.Host] = res.Session.Cookie
+		// Key by bare host (port-stripped) so later actions on any port of the same
+		// host inherit the session — matches the lookup in the inject step above.
+		e.sessions[engagementHost(res.Session.Host)] = res.Session.Cookie
 		if err := e.rec("session_established", map[string]any{"host": res.Session.Host, "action": a.ID}); err != nil {
 			return false, err
 		}
