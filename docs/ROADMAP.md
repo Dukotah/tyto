@@ -233,12 +233,15 @@ where "model-unbypassable guard" becomes true instead of aspirational.*
   with methodology-alignment once the task tree exists (Phase 2).
 - ✅ **Name resolved → `tyto`** (module `github.com/dukotah/tyto`, binary `tyto`).
 
-## Phase 2 — Real recon/scan, the methodology brain & the data model — 🚧
+## Phase 2 — Real recon/scan, the methodology brain & the data model — ✅
 > **Status (June 2026):** methodology task-tree ✅ (`internal/methodology`, guard-pruned
-> frontier); native recon/scan ✅ (`portscan`, `httpprobe`, `webcrawl`, `dnsenum` — native,
-> not the naabu/ProjectDiscovery tools); finding dedup ✅ (light, by target+title);
-> resumable engagements ✅ via a JSON state snapshot (`internal/store`). **Not done:** a
-> relational SQLite store and the provisioned/recovered **credential data model**.
+> frontier); native recon/scan ✅ (`portscan`/`httpprobe`/`webcrawl`/`dnsenum` — native, not
+> naabu/PD); finding dedup ✅; resumable engagements ✅ (JSON snapshot AND a relational
+> **SQLite** store, `--db`); **credential data model ✅** (recovered creds + client-provisioned
+> creds, audit-redacted); and **authenticated testing ✅** — `login` establishes a session the
+> engine replays through httpprobe/webcrawl/webinject (verified: found XSS reachable only
+> behind login). The remaining roadmap bullets below (naabu/subfinder embeds) are superseded
+> by the native equivalents.
 - ⬜ **Scan layer (pure-Go):** harden the native TCP-connect scanner (worker pool,
   ranges, banner grab) → embed `naabu` (CONNECT, `CGO_ENABLED=0`) +
   `praetorian-inc/fingerprintx`. *(Pin the ProjectDiscovery module tree together;
@@ -330,7 +333,11 @@ testing is Phase 4 — don't claim it here.)*
 - ⬜ **TUI console** (Bubble Tea v2) — *passive* live view; engine/guard stay headless.
 - ⬜ **Interactive approval UX** for the Phase-1 `RequireApproval` verdict.
 
-## Phase 5 — Internal / Identity (Active Directory) — ⬜
+## Phase 5 — Internal / Identity (Active Directory) — 🚧
+> **Status (June 2026):** a first SMB/AD adapter landed — `smbenum` shells out to
+> NetExec/crackmapexec when installed (share/session enumeration) and degrades
+> gracefully when not (its live path is untested here; parsing is unit-tested).
+> **Not done:** BloodHound/SharpHound graph ingest, Kerberoast/AS-REP, spray/relay/PtH.
 *The biggest capability gap for "all-in-one," and where offline/air-gapped value is
 strongest. Read-only enumeration/graph (RiskMedium↓) can land earlier; intrusive
 spray/relay/PtH defer behind the exploitation-grade gate. All shell-out/adapter tier.*
@@ -368,7 +375,12 @@ capability + egress).*
   tunnel*, not the literal target string. *(If internal engagements fall outside tyto's
   wedge, move MITM/pivoting to Non-goals instead — make the boundary explicit.)*
 
-## Phase 7 — Platform & release polish — ⬜
+## Phase 7 — Platform & release polish — 🚧
+> **Status (June 2026):** release engineering ✅ — `.goreleaser.yaml` (CGO_ENABLED=0,
+> reproducible, multi-platform, checksummed), a tag-triggered release workflow, a
+> NOTICE attribution file (embed-vs-shell-out license boundary), and docs/INSTALL.md.
+> **Not done:** the `hashicorp/go-plugin` SDK and a `koanf`/`slog`/`gocron` config-and-
+> scheduler layer.
 - ⬜ **Plugin SDK:** `hashicorp/go-plugin` (gRPC), process-isolated (a plugin can't
   crash tyto or bypass the in-process guard).
 - ⬜ **Release engineering:** GoReleaser signed, reproducible `CGO_ENABLED=0` builds;
