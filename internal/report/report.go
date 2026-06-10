@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/dukotah/tyto/internal/cvss"
 	"github.com/dukotah/tyto/internal/engagement"
 	"github.com/dukotah/tyto/internal/state"
 )
@@ -35,13 +36,15 @@ type Totals struct {
 
 // FindingView is the report-facing projection of a finding.
 type FindingView struct {
-	Severity    string `json:"severity"`
-	Title       string `json:"title"`
-	Target      string `json:"target"`
-	Tool        string `json:"tool"`
-	Validated   bool   `json:"validated"`
-	Description string `json:"description,omitempty"`
-	Evidence    string `json:"evidence,omitempty"`
+	Severity    string  `json:"severity"`
+	Title       string  `json:"title"`
+	Target      string  `json:"target"`
+	Tool        string  `json:"tool"`
+	Validated   bool    `json:"validated"`
+	CVSS        float64 `json:"cvss,omitempty"`
+	CVSSVector  string  `json:"cvss_vector,omitempty"`
+	Description string  `json:"description,omitempty"`
+	Evidence    string  `json:"evidence,omitempty"`
 }
 
 // AssetView is the report-facing projection of an asset.
@@ -69,10 +72,17 @@ func Build(eng *engagement.Engagement, st *state.State) Report {
 		if f.Validated {
 			r.Totals.Validated++
 		}
-		r.Findings = append(r.Findings, FindingView{
+		fv := FindingView{
 			Severity: f.Severity.String(), Title: f.Title, Target: f.Target, Tool: f.Tool,
 			Validated: f.Validated, Description: f.Description, Evidence: f.Evidence,
-		})
+		}
+		if f.CVSS != "" {
+			if score, err := cvss.BaseScore(f.CVSS); err == nil {
+				fv.CVSS = score
+				fv.CVSSVector = f.CVSS
+			}
+		}
+		r.Findings = append(r.Findings, fv)
 	}
 	for _, a := range st.Assets() {
 		r.Assets = append(r.Assets, AssetView{Type: a.Type, Value: a.Value, Attrs: a.Attrs})
@@ -136,7 +146,11 @@ func Render(eng *engagement.Engagement, st *state.State) string {
 		for _, tgt := range targets {
 			fmt.Fprintf(&b, "\n### %s\n", tgt)
 			for _, f := range byTarget[tgt] {
-				fmt.Fprintf(&b, "- **[%s]** %s (`%s`)\n", strings.ToUpper(f.Severity), f.Title, f.Tool)
+				cvssTag := ""
+				if f.CVSS > 0 {
+					cvssTag = fmt.Sprintf(" — CVSS %.1f", f.CVSS)
+				}
+				fmt.Fprintf(&b, "- **[%s%s]** %s (`%s`)\n", strings.ToUpper(f.Severity), cvssTag, f.Title, f.Tool)
 				if f.Description != "" {
 					fmt.Fprintf(&b, "  - %s\n", f.Description)
 				}

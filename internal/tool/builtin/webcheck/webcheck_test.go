@@ -46,6 +46,35 @@ func TestWebcheckFlagsMissingHeaders(t *testing.T) {
 	}
 }
 
+func TestWebcheckFlagsInsecureCookie(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		// A cookie with no Secure/HttpOnly/SameSite.
+		http.SetCookie(w, &http.Cookie{Name: "session", Value: "abc"})
+		w.Header().Set("Strict-Transport-Security", "max-age=1")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer srv.Close()
+
+	res, _ := New().Execute(context.Background(), action.Action{ID: "c1", Target: srv.URL})
+	titles := map[string]bool{}
+	for _, f := range res.Findings {
+		titles[f.Title] = true
+	}
+	if !titles["Cookie without Secure flag"] || !titles["Cookie without HttpOnly flag"] {
+		t.Fatalf("expected insecure-cookie findings, got %v", keys2(titles))
+	}
+}
+
+func keys2(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
+
 func TestWebcheckQuietOnHardenedServer(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		h := w.Header()

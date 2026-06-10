@@ -1,0 +1,247 @@
+{
+  "techniques": [
+    {
+      "id": "host-port-scan",
+      "name": "TCP service enumeration",
+      "phase": "scanning",
+      "category": "scan",
+      "tool": "portscan",
+      "applies_to": {"asset_type": "host"},
+      "why": "enumerate exposed TCP services on a discovered host"
+    },
+    {
+      "id": "http-fingerprint",
+      "name": "HTTP service fingerprint",
+      "phase": "recon",
+      "category": "recon",
+      "tool": "httpprobe",
+      "applies_to": {"service": "http"},
+      "why": "identify the web server, status, and title of an HTTP service"
+    },
+    {
+      "id": "http-waf",
+      "name": "WAF/CDN fingerprint",
+      "phase": "recon",
+      "category": "recon",
+      "tool": "wafdetect",
+      "applies_to": {"service": "http"},
+      "why": "fingerprint any WAF/CDN so later active steps account for its blocking"
+    },
+    {
+      "id": "https-waf",
+      "name": "WAF/CDN fingerprint",
+      "phase": "recon",
+      "category": "recon",
+      "tool": "wafdetect",
+      "applies_to": {"service": "https"},
+      "why": "fingerprint any WAF/CDN so later active steps account for its blocking"
+    },
+    {
+      "id": "endpoint-takeover",
+      "name": "Subdomain takeover check",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "subtakeover",
+      "applies_to": {"asset_type": "endpoint"},
+      "why": "check for dangling-DNS subdomain-takeover fingerprints"
+    },
+    {
+      "id": "https-fingerprint",
+      "name": "HTTPS service fingerprint",
+      "phase": "recon",
+      "category": "recon",
+      "tool": "httpprobe",
+      "applies_to": {"service": "https"},
+      "why": "identify the web server, status, and title of an HTTPS service"
+    },
+    {
+      "id": "http-hardening-review",
+      "name": "HTTP hardening review",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "webcheck",
+      "applies_to": {"service": "http"},
+      "why": "check the HTTP service for missing security headers and disclosure"
+    },
+    {
+      "id": "https-hardening-review",
+      "name": "HTTPS hardening review",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "webcheck",
+      "applies_to": {"service": "https"},
+      "why": "check the HTTPS service for missing security headers and disclosure"
+    },
+    {
+      "id": "http-content-discovery",
+      "name": "HTTP content discovery",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "webdiscover",
+      "applies_to": {"service": "http"},
+      "why": "probe for exposed sensitive paths (secrets, VCS metadata, status endpoints)"
+    },
+    {
+      "id": "http-secret-scan",
+      "name": "Secret scan (response/JS)",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "secretscan",
+      "applies_to": {"service": "http"},
+      "why": "scan response bodies and same-host JS for exposed API keys and secrets"
+    },
+    {
+      "id": "https-secret-scan",
+      "name": "Secret scan (response/JS)",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "secretscan",
+      "applies_to": {"service": "https"},
+      "why": "scan response bodies and same-host JS for exposed API keys and secrets"
+    },
+    {
+      "id": "https-content-discovery",
+      "name": "HTTPS content discovery",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "webdiscover",
+      "applies_to": {"service": "https"},
+      "why": "probe for exposed sensitive paths (secrets, VCS metadata, status endpoints)"
+    },
+    {
+      "id": "tls-posture",
+      "name": "TLS posture review",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "tlscheck",
+      "applies_to": {"service": "https"},
+      "why": "check for deprecated TLS versions and certificate problems"
+    },
+    {
+      "id": "http-crawl",
+      "name": "Web crawl / attack-surface discovery",
+      "phase": "scanning",
+      "category": "recon",
+      "tool": "webcrawl",
+      "applies_to": {"service": "http"},
+      "why": "follow links and forms to discover parameterized endpoints to test"
+    },
+    {
+      "id": "https-crawl",
+      "name": "Web crawl / attack-surface discovery",
+      "phase": "scanning",
+      "category": "recon",
+      "tool": "webcrawl",
+      "applies_to": {"service": "https"},
+      "why": "follow links and forms to discover parameterized endpoints to test"
+    },
+    {
+      "id": "endpoint-injection",
+      "name": "Injection testing (XSS / SQLi / traversal / cmdi)",
+      "phase": "exploitation",
+      "category": "scan",
+      "tool": "webinject",
+      "applies_to": {"asset_type": "endpoint"},
+      "why": "test a parameterized endpoint for XSS, SQL injection, path traversal, and command injection"
+    },
+    {
+      "id": "endpoint-sqli-extract",
+      "name": "SQLi data extraction (impact)",
+      "phase": "exploitation",
+      "category": "exploit",
+      "tool": "sqliexploit",
+      "applies_to": {"asset_type": "endpoint"},
+      "why": "demonstrate SQL-injection impact by extracting DB version/user/data (authorized targets only)"
+    },
+    {
+      "id": "endpoint-rce",
+      "name": "Command execution (impact)",
+      "phase": "exploitation",
+      "category": "exploit",
+      "tool": "cmdexec",
+      "applies_to": {"asset_type": "endpoint"},
+      "why": "demonstrate command-injection impact by executing commands and capturing output (authorized targets only)"
+    },
+    {
+      "id": "endpoint-open-redirect",
+      "name": "Open redirect testing",
+      "phase": "exploitation",
+      "category": "scan",
+      "tool": "redircheck",
+      "applies_to": {"asset_type": "endpoint"},
+      "why": "test a parameterized endpoint for open-redirect via redirect-style parameters"
+    },
+    {
+      "id": "http-cors",
+      "name": "CORS misconfiguration check",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "corscheck",
+      "applies_to": {"service": "http"},
+      "why": "check for permissive CORS (reflected or wildcard origin, with credentials)"
+    },
+    {
+      "id": "https-cors",
+      "name": "CORS misconfiguration check",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "corscheck",
+      "applies_to": {"service": "https"},
+      "why": "check for permissive CORS (reflected or wildcard origin, with credentials)"
+    },
+    {
+      "id": "ssh-enum",
+      "name": "SSH banner and version assessment",
+      "phase": "scanning",
+      "category": "scan",
+      "tool": "sshcheck",
+      "applies_to": {"service": "ssh"},
+      "why": "grab the SSH banner and flag obsolete protocol / outdated OpenSSH"
+    },
+    {
+      "id": "http-methods",
+      "name": "HTTP methods review",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "httpmethods",
+      "applies_to": {"service": "http"},
+      "why": "enumerate dangerous HTTP methods (PUT/DELETE/TRACE) and Cross-Site Tracing"
+    },
+    {
+      "id": "https-methods",
+      "name": "HTTP methods review",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "httpmethods",
+      "applies_to": {"service": "https"},
+      "why": "enumerate dangerous HTTP methods (PUT/DELETE/TRACE) and Cross-Site Tracing"
+    },
+    {
+      "id": "smb-enum",
+      "name": "SMB share and session enumeration",
+      "phase": "scanning",
+      "category": "scan",
+      "tool": "",
+      "applies_to": {"service": "smb"},
+      "why": "enumerate SMB shares/sessions (Phase 5 internal/identity tier)"
+    },
+    {
+      "id": "ftp-anon",
+      "name": "FTP banner and anonymous-login check",
+      "phase": "scanning",
+      "category": "scan",
+      "tool": "ftpcheck",
+      "applies_to": {"service": "ftp"},
+      "why": "grab the FTP banner and test for anonymous login"
+    },
+    {
+      "id": "db-enum",
+      "name": "Database service enumeration",
+      "phase": "scanning",
+      "category": "scan",
+      "tool": "",
+      "applies_to": {"service": "mysql"},
+      "why": "enumerate the exposed database service (no built-in tool yet)"
+    }
+  ]
+}

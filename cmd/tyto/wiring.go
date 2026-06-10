@@ -3,9 +3,25 @@ package main
 import (
 	"github.com/dukotah/tyto/internal/guard"
 	"github.com/dukotah/tyto/internal/tool"
+	"github.com/dukotah/tyto/internal/tool/builtin/cmdexec"
+	"github.com/dukotah/tyto/internal/tool/builtin/corscheck"
+	"github.com/dukotah/tyto/internal/tool/builtin/dnsenum"
+	"github.com/dukotah/tyto/internal/tool/builtin/emailsec"
+	"github.com/dukotah/tyto/internal/tool/builtin/ftpcheck"
+	"github.com/dukotah/tyto/internal/tool/builtin/httpmethods"
 	"github.com/dukotah/tyto/internal/tool/builtin/httpprobe"
 	"github.com/dukotah/tyto/internal/tool/builtin/portscan"
+	"github.com/dukotah/tyto/internal/tool/builtin/redircheck"
+	"github.com/dukotah/tyto/internal/tool/builtin/secretscan"
+	"github.com/dukotah/tyto/internal/tool/builtin/sqliexploit"
+	"github.com/dukotah/tyto/internal/tool/builtin/sshcheck"
+	"github.com/dukotah/tyto/internal/tool/builtin/subtakeover"
+	"github.com/dukotah/tyto/internal/tool/builtin/tlscheck"
+	"github.com/dukotah/tyto/internal/tool/builtin/wafdetect"
 	"github.com/dukotah/tyto/internal/tool/builtin/webcheck"
+	"github.com/dukotah/tyto/internal/tool/builtin/webcrawl"
+	"github.com/dukotah/tyto/internal/tool/builtin/webdiscover"
+	"github.com/dukotah/tyto/internal/tool/builtin/webinject"
 )
 
 // defaultRegistry wires the built-in tool adapters.
@@ -14,6 +30,24 @@ func defaultRegistry() *tool.Registry {
 	r.MustRegister(portscan.New())
 	r.MustRegister(httpprobe.New())
 	r.MustRegister(webcheck.New())
+	r.MustRegister(webdiscover.New())
+	r.MustRegister(tlscheck.New())
+	r.MustRegister(webcrawl.New())
+	r.MustRegister(webinject.New())
+	r.MustRegister(corscheck.New())
+	r.MustRegister(redircheck.New())
+	r.MustRegister(httpmethods.New())
+	r.MustRegister(dnsenum.New())
+	r.MustRegister(sshcheck.New())
+	r.MustRegister(ftpcheck.New())
+	r.MustRegister(emailsec.New())
+	r.MustRegister(secretscan.New())
+	r.MustRegister(wafdetect.New())
+	r.MustRegister(subtakeover.New())
+	// Exploitation tier (exploit-category, RiskHigh) — the Scope Guard only lets
+	// these run with a verified authorization grant for the target.
+	r.MustRegister(cmdexec.New())
+	r.MustRegister(sqliexploit.New())
 	return r
 }
 

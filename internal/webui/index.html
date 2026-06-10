@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tyto — operational console</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --border:#30363d; --text:#c9d1d9;
+    --muted:#8b949e; --accent:#58a6ff;
+    --crit:#b10dc9; --high:#ff4136; --med:#ff851b; --low:#ffd400; --info:#7fdbff;
+    --ok:#3fb950; --deny:#ff4136; --hold:#ff851b;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
+    font-size:13px; line-height:1.5;
+  }
+  header{
+    display:flex; align-items:center; gap:14px;
+    padding:10px 16px; background:var(--panel); border-bottom:1px solid var(--border);
+  }
+  header .brand{font-size:18px; font-weight:bold; color:var(--text)}
+  header .spacer{flex:1}
+  .status{display:flex; align-items:center; gap:7px; color:var(--muted)}
+  .dot{width:9px; height:9px; border-radius:50%; background:var(--muted)}
+  .dot.running{background:var(--ok); box-shadow:0 0 6px var(--ok); animation:pulse 1.2s infinite}
+  .dot.idle{background:var(--muted)}
+  .dot.error{background:var(--high)}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  .layout{display:flex; min-height:calc(100vh - 49px)}
+  nav{
+    width:170px; background:var(--panel); border-right:1px solid var(--border);
+    padding:10px 0; flex-shrink:0;
+  }
+  nav button{
+    display:block; width:100%; text-align:left; padding:9px 16px;
+    background:none; border:none; border-left:3px solid transparent;
+    color:var(--muted); font:inherit; cursor:pointer;
+  }
+  nav button:hover{color:var(--text); background:#1c2230}
+  nav button.active{color:var(--accent); border-left-color:var(--accent); background:#1c2230}
+  main{flex:1; padding:18px 22px; overflow:auto}
+  .panel{display:none}
+  .panel.active{display:block}
+  h2{margin:0 0 14px; font-size:16px; font-weight:bold}
+  label{display:block; margin-bottom:4px; color:var(--muted)}
+  select,input[type=number]{
+    background:var(--bg); color:var(--text); border:1px solid var(--border);
+    border-radius:5px; padding:7px 9px; font:inherit; min-width:240px;
+  }
+  .field{margin-bottom:14px}
+  .row{display:flex; gap:8px; align-items:center}
+  button.btn{
+    background:var(--accent); color:#0d1117; border:none; border-radius:6px;
+    padding:8px 16px; font:inherit; font-weight:bold; cursor:pointer;
+  }
+  button.btn:hover{filter:brightness(1.1)}
+  button.btn.secondary{background:var(--panel); color:var(--text); border:1px solid var(--border)}
+  button.btn:disabled{opacity:.5; cursor:not-allowed}
+  form fieldset{border:none; margin:0; padding:0}
+  form[disabled] select,form[disabled] input,form[disabled] button{opacity:.5; pointer-events:none}
+  .log{
+    margin-top:14px; background:#010409; border:1px solid var(--border); border-radius:6px;
+    padding:10px 12px; height:46vh; overflow:auto; font-size:12px; white-space:pre-wrap;
+  }
+  .log .ev{margin:1px 0}
+  .log .cyc{margin:8px 0 4px; color:var(--accent); border-top:1px dashed var(--border); padding-top:6px}
+  .log .muted{color:var(--muted)}
+  .v-allow{color:var(--ok)} .v-deny{color:var(--deny)} .v-hold{color:var(--hold)}
+  .log .err{color:var(--high)}
+  .chip{
+    display:inline-block; padding:1px 7px; border-radius:10px; font-size:11px;
+    font-weight:bold; color:#0d1117; text-transform:uppercase;
+  }
+  .sev-critical{background:var(--crit); color:#fff} .sev-high{background:var(--high); color:#fff}
+  .sev-medium{background:var(--med)} .sev-low{background:var(--low)} .sev-info{background:var(--info)}
+  .sev-unknown{background:var(--muted)}
+  .cards{display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px}
+  .card{
+    background:var(--panel); border:1px solid var(--border); border-radius:8px;
+    padding:12px 18px; min-width:120px;
+  }
+  .card .n{font-size:24px; font-weight:bold}
+  .card .l{color:var(--muted); font-size:11px; text-transform:uppercase}
+  .breakdown{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px}
+  table{width:100%; border-collapse:collapse; margin-top:6px}
+  th,td{text-align:left; padding:7px 10px; border-bottom:1px solid var(--border); vertical-align:top}
+  th{color:var(--muted); font-weight:normal; font-size:11px; text-transform:uppercase}
+  td.mono{font-family:inherit; color:var(--muted)}
+  .desc{color:var(--muted); font-size:11px; margin-top:3px}
+  .evidence{color:var(--muted); font-size:11px; margin-top:2px; white-space:pre-wrap}
+  .toolbar{display:flex; gap:10px; align-items:center; margin-bottom:8px; flex-wrap:wrap}
+  .note{color:var(--muted); font-size:11px; margin:6px 0}
+  .inline-err{color:var(--high); font-size:12px; margin:8px 0}
+  .counter{color:var(--accent); font-weight:bold}
+  .validated{color:var(--ok)} .candidate{color:var(--muted)}
+</style>
+</head>
+<body>
+<header>
+  <span class="brand">🦉 tyto</span>
+  <span class="status"><span id="statusDot" class="dot idle"></span><span id="statusText">idle</span></span>
+  <span class="spacer"></span>
+  <span class="status" id="engInfo"></span>
+</header>
+
+<div class="layout">
+  <nav id="nav">
+    <button data-tab="run" class="active">Run</button>
+    <button data-tab="findings">Findings</button>
+    <button data-tab="audit">Audit</button>
+    <button data-tab="tools">Tools</button>
+    <button data-tab="methodology">Methodology</button>
+  </nav>
+  <main>
+    <!-- RUN -->
+    <section id="panel-run" class="panel active">
+      <h2>Run</h2>
+      <div id="runErr" class="inline-err" style="display:none"></div>
+      <form id="runForm">
+        <fieldset>
+          <div class="field">
+            <label for="engSelect">Engagement (authorizes scope — required)</label>
+            <select id="engSelect"></select>
+          </div>
+          <div class="field">
+            <label for="objective">Instruction to the AI operator</label>
+            <textarea id="objective" rows="3" placeholder="e.g. Enumerate the in-scope web service and test it for injection and exposed secrets. (Leave blank to use the engagement's own objectives.)" style="width:100%;background:#0d1117;color:#c9d1d9;border:1px solid #30363d;border-radius:6px;padding:8px;font:inherit;resize:vertical"></textarea>
+            <span class="muted" style="font-size:12px">The local model decides which of the tools to run; the Scope Guard gates every action. Use the <b>ollama</b> planner below for real model-driven runs (needs Ollama running).</span>
+          </div>
+          <div class="field">
+            <label for="plannerSelect">Planner</label>
+            <select id="plannerSelect">
+              <option value="scripted" selected>scripted</option>
+              <option value="mock">mock</option>
+              <option value="ollama">ollama</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="cyclesInput">Cycles</label>
+            <input type="number" id="cyclesInput" value="3" min="1" max="999">
+          </div>
+          <div class="field row">
+            <input type="checkbox" id="dryRun">
+            <label for="dryRun" style="margin:0">Dry run</label>
+          </div>
+          <button type="submit" class="btn" id="startBtn">Start run</button>
+          <span style="margin-left:14px" class="muted">findings seen: <span class="counter" id="liveCount">0</span></span>
+        </fieldset>
+      </form>
+      <div id="log" class="log"></div>
+    </section>
+
+    <!-- FINDINGS -->
+    <section id="panel-findings" class="panel">
+      <h2>Findings</h2>
+      <div class="toolbar">
+        <button class="btn secondary" id="refreshFindings">Refresh</button>
+        <label for="sevFilter" style="margin:0">Severity</label>
+        <select id="sevFilter">
+          <option value="all">all</option>
+          <option value="critical">critical</option>
+          <option value="high">high</option>
+          <option value="medium">medium</option>
+          <option value="low">low</option>
+          <option value="info">info</option>
+        </select>
+      </div>
+      <div id="findingsErr" class="inline-err" style="display:none"></div>
+      <div id="findingsCards" class="cards"></div>
+      <div id="findingsBreakdown" class="breakdown"></div>
+      <table>
+        <thead><tr>
+          <th>Severity</th><th>CVSS</th><th>Title</th><th>Target</th><th>Tool</th><th>Validated</th>
+        </tr></thead>
+        <tbody id="findingsBody"></tbody>
+      </table>
+    </section>
+
+    <!-- AUDIT -->
+    <section id="panel-audit" class="panel">
+      <h2>Audit log</h2>
+      <p class="note">This chain is tamper-evident: each entry links to the hash of the previous entry.</p>
+      <div class="toolbar"><button class="btn secondary" id="refreshAudit">Refresh</button></div>
+      <div id="auditErr" class="inline-err" style="display:none"></div>
+      <table>
+        <thead><tr><th>Seq</th><th>Time</th><th>Kind</th><th>Hash</th></tr></thead>
+        <tbody id="auditBody"></tbody>
+      </table>
+    </section>
+
+    <!-- TOOLS -->
+    <section id="panel-tools" class="panel">
+      <h2>Tools</h2>
+      <div class="toolbar"><button class="btn secondary" id="refreshTools">Refresh</button></div>
+      <div id="toolsErr" class="inline-err" style="display:none"></div>
+      <table>
+        <thead><tr><th>Name</th><th>Category</th><th>Risk</th></tr></thead>
+        <tbody id="toolsBody"></tbody>
+      </table>
+    </section>
+
+    <!-- METHODOLOGY -->
+    <section id="panel-methodology" class="panel">
+      <h2>Methodology</h2>
+      <div class="toolbar"><button class="btn secondary" id="refreshMethod">Refresh</button></div>
+      <div id="methodErr" class="inline-err" style="display:none"></div>
+      <table>
+        <thead><tr><th>Phase</th><th>Technique</th><th>Tool</th></tr></thead>
+        <tbody id="methodBody"></tbody>
+      </table>
+    </section>
+  </main>
+</div>
+
+<script>
+"use strict";
+
+// ---------- helpers ----------
+const $ = (id) => document.getElementById(id);
+const el = (tag, cls, text) => {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined && text !== null) e.textContent = String(text);
+  return e;
+};
+function showErr(node, msg){ node.textContent = msg; node.style.display = "block"; }
+function hideErr(node){ node.style.display = "none"; }
+function sevClass(s){
+  const v = (s || "").toLowerCase();
+  return ["critical","high","medium","low","info"].includes(v) ? "sev-"+v : "sev-unknown";
+}
+async function getJSON(url){
+  const r = await fetch(url, {headers:{"Accept":"application/json"}});
+  if (!r.ok) throw new Error("HTTP " + r.status + " for " + url);
+  return r.json();
+}
+
+// ---------- tabs ----------
+let findingsLoaded = false, auditLoaded = false, toolsLoaded = false, methodLoaded = false;
+function showTab(tab){
+  document.querySelectorAll("nav button").forEach(b =>
+    b.classList.toggle("active", b.dataset.tab === tab));
+  document.querySelectorAll(".panel").forEach(p =>
+    p.classList.toggle("active", p.id === "panel-" + tab));
+  if (tab === "findings" && !findingsLoaded) loadFindings();
+  if (tab === "audit" && !auditLoaded) loadAudit();
+  if (tab === "tools" && !toolsLoaded) loadTools();
+  if (tab === "methodology" && !methodLoaded) loadMethodology();
+}
+$("nav").addEventListener("click", (e) => {
+  if (e.target.matches("button[data-tab]")) showTab(e.target.dataset.tab);
+});
+
+// ---------- status polling ----------
+function setStatus(state){
+  const dot = $("statusDot"), txt = $("statusText");
+  dot.className = "dot " + state;
+  txt.textContent = state;
+}
+let lastRunning = false;
+async function pollStatus(){
+  try {
+    const s = await getJSON("/api/status");
+    const running = !!s.running;
+    // only flip display state if not error
+    if ($("statusDot").className.indexOf("error") === -1 || !running) {
+      setStatus(running ? "running" : "idle");
+    }
+    const info = $("engInfo");
+    info.textContent = "";
+    if (s.engagement) {
+      info.appendChild(el("span", "", s.engagement.id + " — " + s.engagement.client));
+      info.appendChild(el("span", "muted", "  ·  findings: " + (s.findings|0)));
+    }
+    // re-sync run form enabled state if a run is active externally
+    if (running && !lastRunning && !esActive) {
+      setFormDisabled(true);
+    } else if (!running && lastRunning && !esActive) {
+      setFormDisabled(false);
+    }
+    lastRunning = running;
+  } catch (e) {
+    setStatus("error");
+  }
+}
+
+// ---------- RUN ----------
+let es = null, esActive = false, liveCount = 0;
+
+function setFormDisabled(disabled){
+  const form = $("runForm");
+  if (disabled) form.setAttribute("disabled", "");
+  else form.removeAttribute("disabled");
+}
+
+async function loadEngagements(){
+  const sel = $("engSelect");
+  try {
+    const list = await getJSON("/api/engagements");
+    sel.textContent = "";
+    if (!Array.isArray(list) || list.length === 0){
+      sel.appendChild(el("option", "", "(no engagements found)"));
+      return;
+    }
+    list.forEach(eng => {
+      const o = el("option", "", (eng.id || "?") + " — " + (eng.client || ""));
+      o.value = eng.path;
+      sel.appendChild(o);
+    });
+  } catch (e) {
+    sel.textContent = "";
+    sel.appendChild(el("option", "", "(failed to load)"));
+    showErr($("runErr"), "Could not load engagements: " + e.message);
+  }
+}
+
+function logLine(cls, text){
+  const line = el("div", "ev " + (cls || ""), text);
+  const box = $("log");
+  box.appendChild(line);
+  box.scrollTop = box.scrollHeight;
+  return line;
+}
+function verdictClass(v){
+  const u = (v || "").toUpperCase();
+  if (u === "ALLOW") return "v-allow";
+  if (u === "DENY") return "v-deny";
+  if (u === "HOLD") return "v-hold";
+  return "";
+}
+
+function renderEvent(ev){
+  const box = $("log");
+  const time = ev.time ? "[" + ev.time + "] " : "";
+  switch (ev.kind){
+    case "cycle": {
+      const d = el("div", "cyc", "── cycle " + (ev.cycle != null ? ev.cycle : "") +
+        (ev.message ? "  " + ev.message : "") + " ──");
+      box.appendChild(d);
+      break;
+    }
+    case "finding": {
+      liveCount++;
+      $("liveCount").textContent = liveCount;
+      const line = el("div", "ev");
+      line.appendChild(document.createTextNode(time));
+      const chip = el("span", "chip " + sevClass(ev.severity), ev.severity || "?");
+      line.appendChild(chip);
+      line.appendChild(document.createTextNode(" " + (ev.title || ev.message || "finding")));
+      box.appendChild(line);
+      break;
+    }
+    case "decision": {
+      const line = el("div", "ev");
+      line.appendChild(document.createTextNode(time + (ev.tool ? ev.tool + " " : "")));
+      const vc = verdictClass(ev.verdict);
+      if (ev.verdict) line.appendChild(el("span", vc, ev.verdict));
+      const tail = (ev.target ? " " + ev.target : "") + (ev.reason ? " — " + ev.reason : "");
+      if (tail) line.appendChild(document.createTextNode(tail));
+      box.appendChild(line);
+      break;
+    }
+    case "error": {
+      logLine("err", time + "ERROR: " + (ev.message || ev.reason || "unknown error"));
+      break;
+    }
+    case "done": {
+      logLine("muted", time + "── run complete ──" + (ev.message ? " " + ev.message : ""));
+      finishRun();
+      break;
+    }
+    case "action":
+    case "result":
+    case "log":
+    default: {
+      const parts = [time];
+      if (ev.tool) parts.push(ev.tool);
+      if (ev.target) parts.push(ev.target);
+      if (ev.verdict) parts.push(ev.verdict);
+      const msg = ev.message || ev.reason || ev.title || "";
+      let txt = parts.join(" ").trim();
+      if (msg) txt += (txt ? "  " : "") + msg;
+      logLine("muted", txt || JSON.stringify(ev));
+      break;
+    }
+  }
+  box.scrollTop = box.scrollHeight;
+}
+
+function openEvents(){
+  if (es) { es.close(); es = null; }
+  es = new EventSource("/api/events");
+  esActive = true;
+  es.onmessage = (m) => {
+    let ev;
+    try { ev = JSON.parse(m.data); }
+    catch (_) { logLine("muted", m.data); return; }
+    renderEvent(ev);
+  };
+  es.onerror = () => {
+    // stream may close normally at end of run; only warn if still marked active
+    if (esActive) logLine("muted", "(event stream interrupted)");
+  };
+}
+
+function finishRun(){
+  esActive = false;
+  if (es) { es.close(); es = null; }
+  setFormDisabled(false);
+  setStatus("idle");
+  // refresh findings data so the tab reflects the completed run
+  findingsLoaded = false;
+  loadFindings();
+}
+
+$("runForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  hideErr($("runErr"));
+  const body = {
+    engagement: $("engSelect").value,
+    planner: $("plannerSelect").value,
+    cycles: parseInt($("cyclesInput").value, 10) || 1,
+    dryRun: $("dryRun").checked,
+    objective: $("objective").value
+  };
+  try {
+    const r = await fetch("/api/run", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(body)
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || data.error || !data.ok){
+      showErr($("runErr"), "Run rejected: " + (data.error || ("HTTP " + r.status)));
+      return;
+    }
+    // success
+    liveCount = 0; $("liveCount").textContent = "0";
+    $("log").textContent = "";
+    setFormDisabled(true);
+    setStatus("running");
+    logLine("muted", "Run started…");
+    openEvents();
+  } catch (err) {
+    showErr($("runErr"), "Failed to start run: " + err.message);
+  }
+});
+
+// ---------- FINDINGS ----------
+let lastFindings = null;
+async function loadFindings(){
+  hideErr($("findingsErr"));
+  try {
+    const data = await getJSON("/api/findings");
+    lastFindings = data;
+    findingsLoaded = true;
+    renderFindings();
+  } catch (e) {
+    showErr($("findingsErr"), "Could not load findings: " + e.message);
+  }
+}
+function renderFindings(){
+  const data = lastFindings || {};
+  const totals = data.totals || {};
+  // cards
+  const cards = $("findingsCards");
+  cards.textContent = "";
+  const mkCard = (n, l) => {
+    const c = el("div", "card");
+    c.appendChild(el("div", "n", n == null ? "0" : n));
+    c.appendChild(el("div", "l", l));
+    return c;
+  };
+  cards.appendChild(mkCard(totals.assets, "assets"));
+  cards.appendChild(mkCard(totals.findings, "findings"));
+  cards.appendChild(mkCard(totals.validated, "validated"));
+  // breakdown
+  const bd = $("findingsBreakdown");
+  bd.textContent = "";
+  const bySev = totals.by_severity || {};
+  ["critical","high","medium","low","info"].forEach(s => {
+    const count = bySev[s];
+    if (count){
+      const chip = el("span", "chip " + sevClass(s), s + " " + count);
+      bd.appendChild(chip);
+    }
+  });
+  // table
+  const body = $("findingsBody");
+  body.textContent = "";
+  const filter = $("sevFilter").value;
+  const list = Array.isArray(data.findings) ? data.findings : [];
+  let shown = 0;
+  list.forEach(f => {
+    if (filter !== "all" && (f.severity || "").toLowerCase() !== filter) return;
+    shown++;
+    const tr = el("tr");
+    // severity
+    const tdSev = el("td");
+    tdSev.appendChild(el("span", "chip " + sevClass(f.severity), f.severity || "?"));
+    tr.appendChild(tdSev);
+    // cvss
+    tr.appendChild(el("td", "mono", (f.cvss && f.cvss > 0) ? String(f.cvss) : "—"));
+    // title + desc + evidence
+    const tdTitle = el("td");
+    tdTitle.appendChild(el("div", "", f.title || "(untitled)"));
+    if (f.description) tdTitle.appendChild(el("div", "desc", f.description));
+    if (f.evidence) tdTitle.appendChild(el("div", "evidence", f.evidence));
+    if (f.cvss_vector) tdTitle.appendChild(el("div", "desc", f.cvss_vector));
+    tr.appendChild(tdTitle);
+    // target
+    tr.appendChild(el("td", "mono", f.target || "—"));
+    // tool
+    tr.appendChild(el("td", "mono", f.tool || "—"));
+    // validated
+    const tdVal = el("td");
+    if (f.validated) tdVal.appendChild(el("span", "validated", "✓"));
+    else tdVal.appendChild(el("span", "candidate", "candidate"));
+    tr.appendChild(tdVal);
+    body.appendChild(tr);
+  });
+  if (shown === 0){
+    const tr = el("tr");
+    const td = el("td", "muted", "No findings to display.");
+    td.colSpan = 6;
+    tr.appendChild(td);
+    body.appendChild(tr);
+  }
+}
+$("refreshFindings").addEventListener("click", () => { findingsLoaded = false; loadFindings(); });
+$("sevFilter").addEventListener("change", renderFindings);
+
+// ---------- AUDIT ----------
+async function loadAudit(){
+  hideErr($("auditErr"));
+  const body = $("auditBody");
+  try {
+    const list = await getJSON("/api/audit");
+    auditLoaded = true;
+    body.textContent = "";
+    (Array.isArray(list) ? list : []).forEach(row => {
+      const tr = el("tr");
+      tr.appendChild(el("td", "mono", row.seq));
+      tr.appendChild(el("td", "", row.time || ""));
+      tr.appendChild(el("td", "", row.kind || ""));
+      const h = (row.hash || "").slice(0, 12);
+      tr.appendChild(el("td", "mono", h || "—"));
+      body.appendChild(tr);
+    });
+    if (body.children.length === 0){
+      const tr = el("tr"); const td = el("td", "muted", "Audit log is empty.");
+      td.colSpan = 4; tr.appendChild(td); body.appendChild(tr);
+    }
+  } catch (e) {
+    showErr($("auditErr"), "Could not load audit log: " + e.message);
+  }
+}
+$("refreshAudit").addEventListener("click", () => { auditLoaded = false; loadAudit(); });
+
+// ---------- TOOLS ----------
+async function loadTools(){
+  hideErr($("toolsErr"));
+  const body = $("toolsBody");
+  try {
+    const list = await getJSON("/api/tools");
+    toolsLoaded = true;
+    const arr = (Array.isArray(list) ? list : []).slice().sort((a, b) =>
+      (a.category || "").localeCompare(b.category || "") ||
+      (a.name || "").localeCompare(b.name || ""));
+    body.textContent = "";
+    arr.forEach(t => {
+      const tr = el("tr");
+      tr.appendChild(el("td", "", t.name || ""));
+      tr.appendChild(el("td", "muted", t.category || ""));
+      tr.appendChild(el("td", "muted", t.risk || ""));
+      body.appendChild(tr);
+    });
+    if (body.children.length === 0){
+      const tr = el("tr"); const td = el("td", "muted", "No tools registered.");
+      td.colSpan = 3; tr.appendChild(td); body.appendChild(tr);
+    }
+  } catch (e) {
+    showErr($("toolsErr"), "Could not load tools: " + e.message);
+  }
+}
+$("refreshTools").addEventListener("click", () => { toolsLoaded = false; loadTools(); });
+
+// ---------- METHODOLOGY ----------
+async function loadMethodology(){
+  hideErr($("methodErr"));
+  const body = $("methodBody");
+  try {
+    const list = await getJSON("/api/methodology");
+    methodLoaded = true;
+    body.textContent = "";
+    (Array.isArray(list) ? list : []).forEach(m => {
+      const tr = el("tr");
+      tr.appendChild(el("td", "", m.phase || ""));
+      tr.appendChild(el("td", "", m.name || ""));
+      tr.appendChild(el("td", "muted", m.tool || "—"));
+      body.appendChild(tr);
+    });
+    if (body.children.length === 0){
+      const tr = el("tr"); const td = el("td", "muted", "No methodology entries.");
+      td.colSpan = 3; tr.appendChild(td); body.appendChild(tr);
+    }
+  } catch (e) {
+    showErr($("methodErr"), "Could not load methodology: " + e.message);
+  }
+}
+$("refreshMethod").addEventListener("click", () => { methodLoaded = false; loadMethodology(); });
+
+// ---------- init ----------
+loadEngagements();
+pollStatus();
+setInterval(pollStatus, 3000);
+</script>
+</body>
+</html>
