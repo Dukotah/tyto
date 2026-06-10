@@ -30,6 +30,7 @@ import (
 	"github.com/ulikunitz/xz"
 
 	"github.com/dukotah/tyto/internal/action"
+	"github.com/dukotah/tyto/internal/cveindex"
 	"github.com/dukotah/tyto/internal/state"
 )
 
@@ -121,7 +122,36 @@ func (t *Tool) Execute(ctx context.Context, a action.Action) (action.Result, err
 	}
 	product = strings.ToLower(product)
 
-	// 2. Resolve feed dir.
+	// 2. Prefer the prebuilt SQLite index (instant). Built by `tyto feeds index`.
+	if db := indexPath(a); db != "" {
+		if ix, ierr := cveindex.Open(db); ierr == nil {
+			matches, qerr := ix.Query(product, version)
+			_ = ix.Close()
+			if qerr == nil {
+				if len(matches) > maxFindings {
+					matches = matches[:maxFindings]
+				}
+				for _, m := range matches {
+					res.Findings = append(res.Findings, state.Finding{
+						ID:          fmt.Sprintf("CM-%s-%d", a.ID, len(res.Findings)),
+						Title:       fmt.Sprintf("%s affects %s %s", m.CVEID, product, version),
+						Severity:    sevFromString(m.Severity),
+						Target:      a.Target,
+						Description: truncate(m.Description, 200),
+						CVSS:        m.Vector,
+						Tool:        t.Name(),
+						Validated:   false, // inference from version string
+						FoundAt:     time.Now().UTC(),
+					})
+				}
+				res.Success = true
+				res.Output = fmt.Sprintf("product %s v%s: %d matching CVE(s) [indexed]", product, version, len(matches))
+				return finish()
+			}
+		}
+	}
+
+	// 2b. No index — fall back to scanning the raw feed dir (slow on the full DB).
 	dir, err := feedDir(a)
 	if err == nil {
 		_, err = os.Stat(dir)
@@ -226,6 +256,42 @@ func parseServerHeader(h string) (product, version string, ok bool) {
 		return name, "", true
 	}
 	return name, strings.TrimSpace(ver), true
+}
+
+// indexPath resolves the prebuilt CVE index DB: a.Params["cve-index"] ->
+// $TYTO_CVE_INDEX -> ~/.tyto/feeds/cve-index.db (only if it exists).
+func indexPath(a action.Action) string {
+	if p := strings.TrimSpace(a.Params["cve-index"]); p != "" {
+		return p
+	}
+	if p := strings.TrimSpace(os.Getenv("TYTO_CVE_INDEX")); p != "" {
+		return p
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	def := filepath.Join(home, ".tyto", "feeds", "cve-index.db")
+	if _, err := os.Stat(def); err == nil {
+		return def
+	}
+	return ""
+}
+
+// sevFromString maps an NVD CVSS baseSeverity to tyto's severity enum.
+func sevFromString(s string) state.Severity {
+	switch strings.ToUpper(strings.TrimSpace(s)) {
+	case "CRITICAL":
+		return state.SeverityCritical
+	case "HIGH":
+		return state.SeverityHigh
+	case "MEDIUM":
+		return state.SeverityMedium
+	case "LOW":
+		return state.SeverityLow
+	default:
+		return state.SeverityInfo
+	}
 }
 
 // feedDir resolves the NVD feed directory: a.Params["nvd"] -> $TYTO_NVD ->
