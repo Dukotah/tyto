@@ -17,6 +17,7 @@ import (
 	"github.com/dukotah/tyto/internal/planner"
 	"github.com/dukotah/tyto/internal/planner/llm"
 	"github.com/dukotah/tyto/internal/report"
+	"github.com/dukotah/tyto/internal/sqlstore"
 	"github.com/dukotah/tyto/internal/state"
 	"github.com/dukotah/tyto/internal/store"
 	"github.com/dukotah/tyto/internal/sysinfo"
@@ -37,6 +38,7 @@ type runOptions struct {
 	reportOut    string
 	resume       bool
 	statePath    string
+	db           string
 }
 
 func newRunCmd() *cobra.Command {
@@ -60,6 +62,7 @@ func newRunCmd() *cobra.Command {
 	f.StringVar(&o.reportOut, "report-out", "", "write the report to this file (default: stdout)")
 	f.BoolVar(&o.resume, "resume", false, "resume from a saved state snapshot (skips completed actions)")
 	f.StringVar(&o.statePath, "state", "", "state snapshot path (default: <engagement-id>.state.json)")
+	f.StringVar(&o.db, "db", "", "persist/resume via a SQLite engagement DB at this path (instead of the JSON snapshot)")
 	return cmd
 }
 
@@ -132,14 +135,28 @@ func (o *runOptions) run(cmd *cobra.Command, _ []string) error {
 	}
 	var priorActions []string
 	if o.resume {
-		snap, err := store.Load(statePath)
-		if err != nil {
-			return fmt.Errorf("resume: %w", err)
+		if o.db != "" {
+			dbs, err := sqlstore.Open(o.db)
+			if err != nil {
+				return fmt.Errorf("resume: open db: %w", err)
+			}
+			priorActions, err = dbs.Into(eng.ID, st)
+			_ = dbs.Close()
+			if err != nil {
+				return fmt.Errorf("resume: load db: %w", err)
+			}
+			fmt.Fprintf(out, "resumed from %s: %d asset(s), %d finding(s), %d completed action(s)\n",
+				o.db, len(st.Assets()), len(st.Findings()), len(priorActions))
+		} else {
+			snap, err := store.Load(statePath)
+			if err != nil {
+				return fmt.Errorf("resume: %w", err)
+			}
+			snap.Into(st)
+			priorActions = snap.CompletedActions
+			fmt.Fprintf(out, "resumed from %s: %d asset(s), %d finding(s), %d completed action(s)\n",
+				statePath, len(snap.Assets), len(snap.Findings), len(priorActions))
 		}
-		snap.Into(st)
-		priorActions = snap.CompletedActions
-		fmt.Fprintf(out, "resumed from %s: %d asset(s), %d finding(s), %d completed action(s)\n",
-			statePath, len(snap.Assets), len(snap.Findings), len(priorActions))
 	}
 
 	// Bind the signed scope hash + verified-grant count into the audit chain so any
@@ -185,8 +202,20 @@ func (o *runOptions) run(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	// Persist progress so the engagement can be resumed later.
-	if err := store.Save(statePath, store.Capture(st, eg.CompletedActionKeys())); err != nil {
+	// Persist progress so the engagement can be resumed later (SQLite if --db,
+	// else a JSON snapshot).
+	if o.db != "" {
+		if dbs, err := sqlstore.Open(o.db); err != nil {
+			fmt.Fprintf(out, "warning: could not open db %s: %v\n", o.db, err)
+		} else {
+			if err := dbs.SaveState(eng.ID, st, eg.CompletedActionKeys()); err != nil {
+				fmt.Fprintf(out, "warning: could not save to db: %v\n", err)
+			} else {
+				fmt.Fprintf(out, "state saved to %s\n", o.db)
+			}
+			_ = dbs.Close()
+		}
+	} else if err := store.Save(statePath, store.Capture(st, eg.CompletedActionKeys())); err != nil {
 		fmt.Fprintf(out, "warning: could not save state snapshot: %v\n", err)
 	}
 
