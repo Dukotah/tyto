@@ -334,10 +334,16 @@ testing is Phase 4 — don't claim it here.)*
 - ⬜ **Interactive approval UX** for the Phase-1 `RequireApproval` verdict.
 
 ## Phase 5 — Internal / Identity (Active Directory) — 🚧
-> **Status (June 2026):** a first SMB/AD adapter landed — `smbenum` shells out to
-> NetExec/crackmapexec when installed (share/session enumeration) and degrades
-> gracefully when not (its live path is untested here; parsing is unit-tested).
-> **Not done:** BloodHound/SharpHound graph ingest, Kerberoast/AS-REP, spray/relay/PtH.
+> **Status (June 2026):** the read-only AD tier has grown beyond SMB. `smbenum`
+> (share/session enum), **`ldapenum`** (users/groups/password-policy over LDAP), and
+> **`kerberoast`** (AS-REP + Kerberoast → recovered Kerberos hashes feeding the
+> credential model, hashcat 18200/13100) all shell out to NetExec/crackmapexec when
+> installed and degrade gracefully when not. All three are identity-category/RiskMedium,
+> guard-gated, with host-agnostic unit-tested parsers (live paths exercised in Kali, not
+> CI). `portscan` now surfaces ldap/ldaps/kerberos services so the methodology frontier
+> chains portscan→ldapenum→kerberoast; the engine injects provisioned domain creds into
+> the AD adapters the same way it does for `login`. **Not done:** BloodHound/SharpHound
+> graph ingest, password spraying, relay/PtH, secretsdump.
 *The biggest capability gap for "all-in-one," and where offline/air-gapped value is
 strongest. Read-only enumeration/graph (RiskMedium↓) can land earlier; intrusive
 spray/relay/PtH defer behind the exploitation-grade gate. All shell-out/adapter tier.*

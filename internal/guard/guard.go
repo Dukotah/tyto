@@ -84,6 +84,11 @@ type Guard struct {
 	grants   []engagement.VerifiedGrant
 	classify RiskClassifier
 	now      func() time.Time // injectable for tests
+	// selfAttested mirrors the engagement's authorization mode, snapshotted at
+	// construction. When true, the authorization gate is satisfied by operator
+	// attestation (no signed grant) — but ONLY for in-scope targets; scope, risk,
+	// category, and time-window checks all still run and still gate.
+	selfAttested bool
 }
 
 // New builds a Guard for the given engagement, an immutable snapshot of the
@@ -92,7 +97,7 @@ type Guard struct {
 // authorization). The guard only ever sees grants that already verified, so it
 // trusts no key material itself.
 func New(eng *engagement.Engagement, tools map[string]ToolMeta, grants []engagement.VerifiedGrant) *Guard {
-	return &Guard{eng: eng, tools: tools, grants: grants, now: time.Now}
+	return &Guard{eng: eng, tools: tools, grants: grants, now: time.Now, selfAttested: eng.Authorization.SelfAttested()}
 }
 
 // WithClassifier attaches a per-param risk classifier and returns the guard.
@@ -143,11 +148,15 @@ func (g *Guard) Evaluate(a action.Action) Decision {
 		return Deny(fmt.Sprintf("category %q is not in the allowed list", cat))
 	}
 
-	// 3.5 Authorization. High-risk or exploit-category actions require a verified,
-	// client-signed grant covering this target at this tier. No covering grant ⇒
-	// deny (fail closed). This is gated on the AUTHORITATIVE effective risk and
-	// tool category, never on the model's self-declared values.
-	if requiresAuthorization(meta.Category, effRisk) && !g.authorized(a.Target, effRisk) {
+	// 3.5 Authorization. High-risk or exploit-category actions require authorization.
+	// In the default client-grant mode that means a verified, client-signed grant
+	// covering this target at this tier; no covering grant ⇒ deny (fail closed). In
+	// self-attested mode the operator's recorded attestation stands in for the grant,
+	// so the gate is satisfied — but only because the target already passed the
+	// absolute scope check in step 1 (an out-of-scope target denied above never
+	// reaches here). This is gated on the AUTHORITATIVE effective risk and tool
+	// category, never on the model's self-declared values.
+	if requiresAuthorization(meta.Category, effRisk) && !g.selfAttested && !g.authorized(a.Target, effRisk) {
 		return Deny(fmt.Sprintf("action (%s, risk %s) requires a verified client authorization covering %q at this tier", cat, effRisk, a.Target))
 	}
 

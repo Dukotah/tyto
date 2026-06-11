@@ -9,6 +9,19 @@ import (
 	"github.com/dukotah/tyto/internal/action"
 )
 
+// ApprovalGater is an optional capability a Tool can implement to FORCE explicit
+// operator approval for specific actions, regardless of the run's global
+// RequireApproval setting. The arbitrary-command "kali" tool uses it so that any
+// non-read-only command must be approved on the dashboard before it runs — the
+// human stays the kill-switch for free-form arsenal access. A tool that doesn't
+// implement this is gated only by the normal RequireApproval + risk path.
+type ApprovalGater interface {
+	// NeedsApproval reports whether THIS action (given its params) must be
+	// operator-approved before execution. Returning true with no approver wired
+	// fails closed (the action is denied).
+	NeedsApproval(params map[string]string) bool
+}
+
 // Tool is a single capability the engine can invoke.
 type Tool interface {
 	// Name is the unique identifier the planner references.

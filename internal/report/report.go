@@ -54,7 +54,61 @@ type FindingView struct {
 	CVSS        float64 `json:"cvss,omitempty"`
 	CVSSVector  string  `json:"cvss_vector,omitempty"`
 	Description string  `json:"description,omitempty"`
+	Repro       string  `json:"repro,omitempty"`
+	Impact      string  `json:"impact,omitempty"`
 	Evidence    string  `json:"evidence,omitempty"`
+	Remediation string  `json:"remediation,omitempty"`
+}
+
+// remediationByTool maps a finding's producing tool to concrete remediation
+// guidance, so every report finding ships with a fix — not just a description.
+var remediationByTool = map[string]string{
+	"dotgit":       "Block web access to the .git directory (deny /.git at the web server/proxy) and rotate any secrets found in the leaked history.",
+	"cookieaudit":  "Set Secure, HttpOnly, and SameSite=Lax (or Strict) on all session cookies.",
+	"graphqlcheck": "Disable GraphQL introspection in production, enforce per-field authorization, and add query depth/cost limits.",
+	"webcheck":     "Add the missing security headers (Content-Security-Policy, X-Frame-Options/frame-ancestors, X-Content-Type-Options, HSTS).",
+	"tlscheck":     "Disable deprecated TLS versions and weak ciphers; renew or repair the certificate chain.",
+	"testssl":      "Disable deprecated TLS versions and weak ciphers; renew or repair the certificate chain.",
+	"corscheck":    "Restrict Access-Control-Allow-Origin to a vetted allowlist; never reflect arbitrary origins together with credentials.",
+	"secretscan":   "Remove the secret from client-delivered code and rotate it; serve secrets only from the server side.",
+	"jsmine":       "Remove the secret from JavaScript bundles and rotate it; keep credentials server-side.",
+	"jwtcheck":     "Reject alg:none, sign with a strong key/secret, and validate every claim (exp, aud, iss).",
+	"sqliexploit":  "Use parameterized queries/prepared statements and validate input; never concatenate user input into SQL.",
+	"webinject":    "Use parameterized queries and context-aware output encoding; validate and sanitize all input.",
+	"redircheck":   "Validate redirect destinations against an allowlist; avoid user-controlled redirect targets.",
+	"ssti":         "Never render user input as a template; use a sandboxed engine and context-aware escaping.",
+	"httpmethods":  "Disable unused HTTP methods (PUT/DELETE/TRACE) at the server or proxy.",
+	"jwt":          "Reject alg:none, sign with a strong key, and validate all claims.",
+	"subtakeover":  "Remove the dangling DNS record or reclaim the referenced resource immediately.",
+}
+
+func remediationFor(toolName string) string { return remediationByTool[strings.ToLower(toolName)] }
+
+// execSummary renders an auto-generated executive-summary paragraph from the
+// report totals — the high-level "what was found and how bad" a client or triager
+// reads first.
+func execSummary(r Report) string {
+	crit := r.Totals.BySeverity["critical"]
+	high := r.Totals.BySeverity["high"]
+	med := r.Totals.BySeverity["medium"]
+	var b strings.Builder
+	b.WriteString("## Executive summary\n\n")
+	fmt.Fprintf(&b, "This authorized assessment evaluated %d in-scope asset(s) and recorded %d finding(s) (%d validated). ",
+		r.Totals.Assets, r.Totals.Findings, r.Totals.Validated)
+	switch {
+	case crit > 0:
+		fmt.Fprintf(&b, "**%d critical** and %d high-severity issue(s) require immediate remediation. ", crit, high)
+	case high > 0:
+		fmt.Fprintf(&b, "**%d high-severity** issue(s) require prompt remediation. ", high)
+	case med > 0:
+		fmt.Fprintf(&b, "%d medium-severity issue(s) were identified; no critical or high issues were found. ", med)
+	case r.Totals.Findings > 0:
+		b.WriteString("Only low/informational issues were identified. ")
+	default:
+		b.WriteString("No security issues were recorded. ")
+	}
+	b.WriteString("Each finding below includes evidence and concrete remediation guidance.\n\n")
+	return b.String()
 }
 
 // AssetView is the report-facing projection of an asset.
@@ -85,6 +139,7 @@ func Build(eng *engagement.Engagement, st *state.State) Report {
 		fv := FindingView{
 			Severity: f.Severity.String(), Title: f.Title, Target: f.Target, Tool: f.Tool,
 			Validated: f.Validated, Description: f.Description, Evidence: f.Evidence,
+			Repro: f.Repro, Impact: f.Impact, Remediation: remediationFor(f.Tool),
 		}
 		if f.CVSS != "" {
 			if score, err := cvss.BaseScore(f.CVSS); err == nil {
@@ -122,6 +177,8 @@ func Render(eng *engagement.Engagement, st *state.State) string {
 	fmt.Fprintf(&b, "**Authorized by:** %s  \n", r.AuthorizedBy)
 	fmt.Fprintf(&b, "**Agreement:** %s  \n", r.Agreement)
 	fmt.Fprintf(&b, "**Scope hash:** `%s`\n\n", r.ScopeHash)
+
+	b.WriteString(execSummary(r))
 
 	fmt.Fprintf(&b, "## Summary\n\n- Assets discovered: %d\n- Findings: %d (%d validated, %d candidate)\n",
 		r.Totals.Assets, r.Totals.Findings, r.Totals.Validated, r.Totals.Findings-r.Totals.Validated)
@@ -169,8 +226,17 @@ func Render(eng *engagement.Engagement, st *state.State) string {
 				if f.Description != "" {
 					fmt.Fprintf(&b, "  - %s\n", f.Description)
 				}
+				if f.Impact != "" {
+					fmt.Fprintf(&b, "  - impact: %s\n", f.Impact)
+				}
+				if f.Repro != "" {
+					fmt.Fprintf(&b, "  - repro: %s\n", f.Repro)
+				}
 				if f.Evidence != "" {
 					fmt.Fprintf(&b, "  - evidence: `%s`\n", f.Evidence)
+				}
+				if f.Remediation != "" {
+					fmt.Fprintf(&b, "  - remediation: %s\n", f.Remediation)
 				}
 			}
 		}

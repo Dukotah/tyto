@@ -151,6 +151,8 @@ const htmlTemplateText = `<!DOCTYPE html>
         {{if .CVSSVector}}<span><strong>Vector:</strong> <span class="mono">{{.CVSSVector}}</span></span>{{end}}
       </div>
       {{if .Description}}<div class="label">Description</div><div>{{.Description}}</div>{{end}}
+      {{if .Impact}}<div class="label">Impact</div><div>{{.Impact}}</div>{{end}}
+      {{if .Repro}}<div class="label">Reproduction</div><pre>{{.Repro}}</pre>{{end}}
       {{if .Evidence}}<div class="label">Evidence</div><pre>{{.Evidence}}</pre>{{end}}
     </article>
     {{end}}

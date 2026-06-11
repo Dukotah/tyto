@@ -41,7 +41,7 @@ func TestResumeSkipsCompletedActions(t *testing.T) {
 	if err := e2.Run(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if got := len(st2.Assets()); got != 0 {
-		t.Fatalf("resumed run should skip the completed action and record no assets, got %d", got)
+	if got := len(discovered(st2)); got != 0 {
+		t.Fatalf("resumed run should skip the completed action and discover no assets, got %d", got)
 	}
 }

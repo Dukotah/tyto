@@ -58,7 +58,7 @@ func newRunCmd() *cobra.Command {
 	f.IntVar(&o.cycles, "cycles", 3, "max plan/act cycles (loop halts early on no progress)")
 	f.StringVar(&o.auditPath, "audit", "", "audit log path (default: <engagement-id>.audit.jsonl)")
 	f.BoolVar(&o.noReport, "no-report", false, "skip printing the report at the end")
-	f.StringVar(&o.reportFormat, "report-format", "md", "report format: md|json|sarif|html")
+	f.StringVar(&o.reportFormat, "report-format", "md", "report format: md|submission|json|sarif|html")
 	f.StringVar(&o.reportOut, "report-out", "", "write the report to this file (default: stdout)")
 	f.BoolVar(&o.resume, "resume", false, "resume from a saved state snapshot (skips completed actions)")
 	f.StringVar(&o.statePath, "state", "", "state snapshot path (default: <engagement-id>.state.json)")
@@ -164,6 +164,8 @@ func (o *runOptions) run(cmd *cobra.Command, _ []string) error {
 	if err := alog.Record("authorization", map[string]any{
 		"scope_hash": eng.ScopeHash(), "verified_grants": len(grants),
 		"client_key": eng.Authorization.ClientPublicKeyB64,
+		"mode":       authMode(eng), "authorized_by": eng.Authorization.AuthorizedBy,
+		"agreement_ref": eng.Authorization.AgreementRef,
 	}); err != nil {
 		return fmt.Errorf("write audit head: %w", err)
 	}
@@ -231,6 +233,8 @@ func emitReport(o *runOptions, eng *engagement.Engagement, st *state.State, out 
 	switch o.reportFormat {
 	case "md", "markdown":
 		data = []byte(report.Render(eng, st))
+	case "submission":
+		data = []byte(report.RenderSubmission(eng, st))
 	case "json":
 		b, err := report.RenderJSON(eng, st)
 		if err != nil {
@@ -250,7 +254,7 @@ func emitReport(o *runOptions, eng *engagement.Engagement, st *state.State, out 
 		}
 		data = b
 	default:
-		return fmt.Errorf("unknown report format %q (want md|json|sarif|html)", o.reportFormat)
+		return fmt.Errorf("unknown report format %q (want md|submission|json|sarif|html)", o.reportFormat)
 	}
 
 	if o.reportOut == "" {

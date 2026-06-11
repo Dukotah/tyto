@@ -19,7 +19,7 @@ func TestPlanRepairsThenSucceeds(t *testing.T) {
 		`{"actions":[{"tool":"portscan","category":"banana","target":"h","risk":"medium"}]}`,
 		`{"actions":[{"tool":"portscan","category":"scan","target":"h","risk":"medium"}]}`,
 	}}
-	acts, err := New(m).Plan(context.Background(), planEngagement(), state.New(), []string{"portscan"})
+	acts, err := New(m).Plan(context.Background(), planEngagement(), state.New(), []string{"portscan"}, nil)
 	if err != nil {
 		t.Fatalf("Plan should succeed after one repair: %v", err)
 	}
@@ -33,7 +33,7 @@ func TestPlanFailsClosedAfterRepairExhausted(t *testing.T) {
 	m := &llm.Mock{Responses: []string{
 		`{"actions":[{"tool":"portscan","category":"banana","target":"h","risk":"medium"}]}`,
 	}}
-	acts, err := New(m).Plan(context.Background(), planEngagement(), state.New(), []string{"portscan"})
+	acts, err := New(m).Plan(context.Background(), planEngagement(), state.New(), []string{"portscan"}, nil)
 	if err == nil {
 		t.Fatal("Plan must fail closed when output never validates")
 	}

@@ -32,6 +32,20 @@ func (fakeScanner) Execute(_ context.Context, a action.Action) (action.Result, e
 	}, nil
 }
 
+// discovered returns the assets a run actually found, excluding the ones seeded
+// from the engagement scope before cycle 1 (IDs prefixed "seed:"). The seeding
+// step primes the methodology frontier; these termination/resume/observe tests
+// care only about what the tools discovered, so they filter it out.
+func discovered(st *state.State) []*state.Asset {
+	var out []*state.Asset
+	for _, a := range st.Assets() {
+		if !strings.HasPrefix(a.ID, "seed:") {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
 // capturingClient records every user prompt so the test can assert that the
 // frontier from cycle 1 reaches the planner in cycle 2.
 type capturingClient struct {
@@ -69,9 +83,9 @@ func TestObserveReplanLoopSurfacesDiscoveredService(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 
-	// Cycle 1 discovered a host + service asset.
-	if got := len(st.Assets()); got != 2 {
-		t.Fatalf("want 2 assets after the scan, got %d", got)
+	// Cycle 1 discovered a host + service asset (on top of the scope seed).
+	if got := len(discovered(st)); got != 2 {
+		t.Fatalf("want 2 discovered assets after the scan, got %d", got)
 	}
 	// Cycle 2's prompt must carry the Go-computed frontier for the discovered service.
 	if len(client.prompts) < 2 {

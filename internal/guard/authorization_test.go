@@ -107,6 +107,49 @@ func TestNonExploitMediumNeedsNoGrant(t *testing.T) {
 	}
 }
 
+// TestSelfAttestedAllowsExploitInScope proves the bug-bounty unlock: an operator
+// self-attested engagement authorizes an exploit-category / high-risk action
+// WITHOUT any signed grant — but only because the target is in scope and clears
+// the risk/category checks.
+func TestSelfAttestedAllowsExploitInScope(t *testing.T) {
+	e := highEngagement()
+	e.Authorization.Mode = "self-attested"
+	g := New(e, exploitTools(), nil) // no grants
+	d := g.Evaluate(action.Action{Tool: "exploiter", Target: "203.0.113.10"})
+	if !d.IsAllowed() {
+		t.Fatalf("self-attested in-scope exploit should allow, got deny: %s", d.Reason)
+	}
+}
+
+// TestSelfAttestedOutOfScopeStillDenies proves scope stays ABSOLUTE: even with
+// operator self-attestation, an out-of-scope target is denied. Self-attestation
+// never relaxes the scope check.
+func TestSelfAttestedOutOfScopeStillDenies(t *testing.T) {
+	e := highEngagement()
+	e.Authorization.Mode = "self-attested"
+	g := New(e, exploitTools(), nil)
+	d := g.Evaluate(action.Action{Tool: "exploiter", Target: "198.51.100.10"}) // not in 203.0.113.0/24
+	if d.IsAllowed() {
+		t.Fatalf("self-attested must NOT authorize an out-of-scope target, got allow")
+	}
+}
+
+// TestClientGrantModeWithoutGrantStillDenies anchors that the default
+// (client-grant) mode is unchanged: a high/exploit action with no covering grant
+// is denied exactly as before. This guards against the self-attested branch
+// leaking into the default path.
+func TestClientGrantModeWithoutGrantStillDenies(t *testing.T) {
+	e := highEngagement() // Mode == "" (client-grant default)
+	if e.Authorization.SelfAttested() {
+		t.Fatal("default engagement must not be self-attested")
+	}
+	g := New(e, exploitTools(), nil)
+	d := g.Evaluate(action.Action{Tool: "exploiter", Target: "203.0.113.10"})
+	if d.Verdict != VerdictDeny {
+		t.Fatalf("client-grant mode without a grant must deny, got %s", d.Verdict)
+	}
+}
+
 func exploitTools() map[string]ToolMeta {
 	return map[string]ToolMeta{
 		"portscan":  {Category: action.CategoryScan, MaxRisk: action.RiskMedium},

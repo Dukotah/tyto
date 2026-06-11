@@ -33,7 +33,7 @@ func (t *Tool) Category() action.Category { return action.CategoryScan }
 func (t *Tool) MaxRisk() action.RiskLevel { return action.RiskMedium }
 
 // defaultPorts is a small, common set scanned when none are specified.
-var defaultPorts = []int{21, 22, 23, 25, 53, 80, 110, 143, 443, 445, 3306, 3389, 8080, 8443}
+var defaultPorts = []int{21, 22, 23, 25, 53, 80, 88, 110, 143, 389, 443, 445, 636, 3268, 3306, 3389, 8080, 8443}
 
 // Execute runs the scan. Supported params: "ports" (comma-separated list).
 func (t *Tool) Execute(ctx context.Context, a action.Action) (action.Result, error) {
@@ -129,16 +129,22 @@ func serviceName(port int) string {
 		return "smtp"
 	case 53:
 		return "dns"
+	case 88:
+		return "kerberos"
 	case 80, 8080:
 		return "http"
 	case 110:
 		return "pop3"
 	case 143:
 		return "imap"
+	case 389, 3268:
+		return "ldap"
 	case 443, 8443:
 		return "https"
 	case 445:
 		return "smb"
+	case 636:
+		return "ldaps"
 	case 3306:
 		return "mysql"
 	case 3389:

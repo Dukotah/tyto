@@ -72,7 +72,7 @@ func (s *Suite) ScoreHermetic(ctx context.Context) *Scorecard {
 	for _, c := range s.Cases {
 		cs := CaseScore{Name: c.Name}
 		p := planner.New(&llm.Mock{Responses: []string{c.ModelOutput}})
-		actions, err := p.Plan(ctx, s.Eng, state.New(), s.ToolNames)
+		actions, err := p.Plan(ctx, s.Eng, state.New(), s.ToolNames, nil)
 		if err != nil {
 			cs.ParseErr = err.Error()
 			sc.Cases = append(sc.Cases, cs)

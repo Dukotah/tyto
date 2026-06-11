@@ -47,6 +47,7 @@ func (t *Tool) Execute(ctx context.Context, a action.Action) (action.Result, err
 	visited := map[string]bool{}
 	endpoints := map[string]bool{} // dedup endpoint URLs (carry query params)
 	queue := []string{start.String()}
+	fetched := 0 // pages that actually returned a response (not just attempted)
 
 	for len(queue) > 0 && len(visited) < maxPages {
 		if ctx.Err() != nil {
@@ -65,6 +66,7 @@ func (t *Tool) Execute(ctx context.Context, a action.Action) (action.Result, err
 		if err != nil {
 			continue
 		}
+		fetched++
 		curURL, _ := url.Parse(cur)
 		// If the page itself carries query params, it's a testable endpoint.
 		if curURL != nil && curURL.RawQuery != "" {
@@ -105,12 +107,22 @@ func (t *Tool) Execute(ctx context.Context, a action.Action) (action.Result, err
 		})
 	}
 
+	// If not a single page actually responded, the target was unreachable — report
+	// that honestly instead of claiming a successful crawl of "1 page" (which
+	// counts the attempted start URL even when its fetch failed).
+	if fetched == 0 {
+		res.Success = false
+		res.Output = fmt.Sprintf("%s: no HTTP response (target unreachable)", start.String())
+		res.FinishedAt = time.Now().UTC()
+		return res, nil
+	}
+
 	res.Findings = append(res.Findings, state.Finding{
-		ID: "CRAWL-" + a.ID, Title: fmt.Sprintf("Crawled %d page(s), found %d parameterized endpoint(s)", len(visited), len(eps)),
+		ID: "CRAWL-" + a.ID, Title: fmt.Sprintf("Crawled %d page(s), found %d parameterized endpoint(s)", fetched, len(eps)),
 		Severity: state.SeverityInfo, Target: start.String(), Tool: t.Name(), Validated: true,
 	})
 	res.Success = true
-	res.Output = fmt.Sprintf("%s: %d pages, %d endpoints", start.String(), len(visited), len(eps))
+	res.Output = fmt.Sprintf("%s: %d pages, %d endpoints", start.String(), fetched, len(eps))
 	res.FinishedAt = time.Now().UTC()
 	return res, nil
 }

@@ -45,9 +45,9 @@ const maxRepairRetries = 1
 // the backend supports it), then validated. Invalid output triggers a bounded
 // repair retry; on exhaustion Plan FAILS CLOSED (error + zero actions) so the
 // engine never executes a half-parsed action.
-func (p *Planner) Plan(ctx context.Context, eng *engagement.Engagement, st *state.State, tools []string) ([]action.Action, error) {
+func (p *Planner) Plan(ctx context.Context, eng *engagement.Engagement, st *state.State, tools []string, scratch *Scratchpad) ([]action.Action, error) {
 	schema := ActionSchema()
-	system, user := SystemPrompt(), UserPrompt(eng, st, tools)
+	system, user := SystemPrompt(), UserPrompt(eng, st, tools, scratch)
 
 	var lastErr error
 	for attempt := 0; attempt <= maxRepairRetries; attempt++ {

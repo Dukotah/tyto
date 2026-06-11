@@ -82,6 +82,9 @@ type Engine struct {
 	// sessions maps a host to an established session cookie (from the login tool),
 	// injected into later actions against that host so they run authenticated.
 	sessions map[string]string
+	// scratch is the planner's short-term memory (already-done + denied actions),
+	// fed back each cycle so the model stops re-proposing finished or out-of-bounds work.
+	scratch *planner.Scratchpad
 }
 
 // New wires an engine. The caller owns the state and audit log (so it can render
@@ -96,7 +99,7 @@ func New(
 	out io.Writer,
 	opts Options,
 ) *Engine {
-	e := &Engine{eng: eng, guard: g, planner: p, tools: tools, state: st, audit: a, out: out, opts: opts, seen: make(map[string]bool), throttle: newThrottle(eng.RoE), sessions: make(map[string]string)}
+	e := &Engine{eng: eng, guard: g, planner: p, tools: tools, state: st, audit: a, out: out, opts: opts, seen: make(map[string]bool), throttle: newThrottle(eng.RoE), sessions: make(map[string]string), scratch: planner.NewScratchpad()}
 	for _, k := range opts.PriorActionKeys {
 		e.seen[k] = true
 	}
@@ -171,6 +174,26 @@ func (e *Engine) Run(ctx context.Context) error {
 		return err
 	}
 
+	// Seed the asset graph from the authorized scope so the deterministic
+	// methodology has a full frontier from cycle 1 (instead of an empty state that
+	// forces the model to free-form and usually skip the deep checks).
+	if seeded := seedAssets(e.eng.Scope.InScope); len(seeded) > 0 {
+		n := 0
+		for i := range seeded {
+			a := seeded[i]
+			if e.state.AddAsset(&a) {
+				n++
+			}
+		}
+		if n > 0 {
+			fmt.Fprintf(e.out, "seeded %d asset(s) from scope to prime the methodology\n", n)
+			e.emit(Event{Kind: "log", Message: fmt.Sprintf("seeded %d asset(s) from scope", n)})
+			if err := e.rec("info", map[string]any{"event": "scope_seeded", "assets": n}); err != nil {
+				return err
+			}
+		}
+	}
+
 	cycles := e.opts.MaxCycles
 	if cycles <= 0 {
 		cycles = 1
@@ -188,7 +211,11 @@ func (e *Engine) Run(ctx context.Context) error {
 		fmt.Fprintf(e.out, "\n── cycle %d/%d ──\n", c, cycles)
 		e.emit(Event{Kind: "cycle", Cycle: c})
 
-		actions, err := e.planner.Plan(ctx, e.eng, e.state, e.tools.Names())
+		// Signal that the planner (local model) is now thinking. On a slow CPU model
+		// this call can take a while; without this the live feed looks frozen between
+		// a cycle marker and the first action. The UI renders it as a "thinking" state.
+		e.emit(Event{Kind: "planning", Cycle: c, Message: "deciding the next actions…"})
+		actions, err := e.planner.Plan(ctx, e.eng, e.state, e.tools.Names(), e.scratch)
 		if err != nil {
 			e.emit(Event{Kind: "error", Cycle: c, Message: fmt.Sprintf("planner error: %v", err)})
 			return fmt.Errorf("cycle %d: %w", c, err)
@@ -269,11 +296,13 @@ func (e *Engine) handle(ctx context.Context, a action.Action) (bool, error) {
 	switch dec.Verdict {
 	case guard.VerdictDeny:
 		fmt.Fprintf(e.out, "  DENY  %-12s %-22s — %s\n", a.Tool, a.Target, dec.Reason)
+		e.scratch.Record(planner.Attempt{Tool: a.Tool, Target: a.Target, Verdict: "deny", Reason: dec.Reason})
 		return false, nil
 	case guard.VerdictRequireApproval:
 		// Human-approval UX lands in a later phase; until then, fail safe by not
 		// executing and recording that approval was required.
 		fmt.Fprintf(e.out, "  HOLD  %-12s %-22s — needs approval: %s\n", a.Tool, a.Target, dec.Reason)
+		e.scratch.Record(planner.Attempt{Tool: a.Tool, Target: a.Target, Verdict: "require_approval", Reason: dec.Reason})
 		return false, e.rec("approval_required", map[string]any{
 			"action": a.ID, "tool": a.Tool, "target": a.Target, "reason": dec.Reason,
 		})
@@ -292,8 +321,15 @@ func (e *Engine) handle(ctx context.Context, a action.Action) (bool, error) {
 	}
 
 	// Human-in-the-loop: a high-impact action (exploit/identity tool or RiskHigh)
-	// pauses for explicit operator approval when RequireApproval is on.
-	if e.opts.RequireApproval && highImpact(t) {
+	// pauses for explicit operator approval when RequireApproval is on. In addition,
+	// a tool may FORCE approval for a specific action via ApprovalGater (the kali
+	// arsenal tool does this for any non-read-only command) — so arbitrary commands
+	// always wait for an operator click regardless of the global setting.
+	forceApproval := false
+	if g, ok := t.(tool.ApprovalGater); ok {
+		forceApproval = g.NeedsApproval(a.Params)
+	}
+	if forceApproval || (e.opts.RequireApproval && highImpact(t)) {
 		approved := false
 		var aerr error
 		if e.opts.Approver != nil {
@@ -355,6 +391,20 @@ func (e *Engine) handle(ctx context.Context, a action.Action) (bool, error) {
 		}
 	}
 
+	// The AD/identity adapters authenticate to the directory with provisioned
+	// domain credentials (Kerberoasting needs an authenticated bind; LDAP enum
+	// gets far more with one). Inject a matching provisioned credential as
+	// username/password when the planner didn't supply them.
+	if a.Tool == "ldapenum" || a.Tool == "kerberoast" {
+		if pc, ok := e.eng.ProvisionedFor(a.Target); ok {
+			merged := map[string]string{"username": pc.Username, "password": pc.Secret}
+			for k, v := range a.Params { // planner-supplied params win
+				merged[k] = v
+			}
+			a.Params = merged
+		}
+	}
+
 	res, err := t.Execute(ctx, a)
 	if err != nil {
 		fmt.Fprintf(e.out, "  ERROR %-12s %-22s — %v\n", a.Tool, a.Target, err)
@@ -405,6 +455,23 @@ func (e *Engine) handle(ctx context.Context, a action.Action) (bool, error) {
 		fmt.Fprintf(e.out, "  DONE  %-12s %-22s — %s\n", a.Tool, a.Target, res.Output)
 	}
 	e.emit(Event{Kind: "result", Tool: a.Tool, Target: a.Target, Message: res.Output})
+	// Remember this ran (with a short outcome) so the planner won't re-propose it.
+	e.scratch.Record(planner.Attempt{Tool: a.Tool, Target: a.Target, Verdict: "allow", Outcome: outcomeSummary(res, newFinding)})
 	// Progress = a novel action that ran successfully, or any new asset/finding/cred.
 	return res.Success || newFinding || newAsset || newCred, nil
+}
+
+// outcomeSummary is a short human note of what an action produced, for the
+// planner's scratchpad ("3 finding(s)", "no new findings", "error").
+func outcomeSummary(res action.Result, newFinding bool) string {
+	if res.Err != "" && len(res.Findings) == 0 {
+		return "error/no result"
+	}
+	if len(res.Findings) > 0 {
+		if newFinding {
+			return fmt.Sprintf("%d finding(s)", len(res.Findings))
+		}
+		return "findings (already known)"
+	}
+	return "no findings"
 }

@@ -52,13 +52,19 @@ type Approval struct {
 type Log struct {
 	mu       sync.Mutex
 	enc      *json.Encoder
+	syncer   interface{ Sync() error } // non-nil when the sink can fsync (a file)
 	seq      uint64
 	prevHash string
 }
 
-// NewLog writes entries to w, starting a fresh chain at the genesis hash.
+// NewLog writes entries to w, starting a fresh chain at the genesis hash. If w can
+// fsync (i.e. it is a file), each record is durably flushed — see Record.
 func NewLog(w io.Writer) *Log {
-	return &Log{enc: json.NewEncoder(w), prevHash: GenesisHash}
+	l := &Log{enc: json.NewEncoder(w), prevHash: GenesisHash}
+	if s, ok := w.(interface{ Sync() error }); ok {
+		l.syncer = s
+	}
+	return l
 }
 
 // Open opens (creating/appending) a JSONL audit file. If the file already has
@@ -95,6 +101,15 @@ func (l *Log) Record(kind string, data map[string]any) error {
 	if err := l.enc.Encode(e); err != nil {
 		return fmt.Errorf("audit: write entry %d: %w", e.Seq, err)
 	}
+	// Fail closed on a durability failure: an entry the OS hasn't committed to disk
+	// is not a real audit record. fsync per entry guarantees a crash can't silently
+	// drop the trailing (pre-crash) records while leaving an intact-looking chain.
+	if l.syncer != nil {
+		if err := l.syncer.Sync(); err != nil {
+			return fmt.Errorf("audit: fsync entry %d: %w", e.Seq, err)
+		}
+	}
+	// Advance the chain only after the entry is durably written.
 	l.seq++
 	l.prevHash = e.Hash
 	return nil

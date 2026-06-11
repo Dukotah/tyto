@@ -74,6 +74,21 @@ func (t *Tool) Execute(ctx context.Context, a action.Action) (action.Result, err
 		Value: url,
 		Attrs: map[string]string{"status": resp.Status, "server": server, "title": title},
 	})
+	// Also emit a `service` asset. The methodology catalog gates the entire web
+	// battery (headers/TLS/CORS/secrets/content-discovery/CVE/nuclei/...) on a
+	// service asset whose Attrs["service"] is http/https — a bare `url` asset
+	// matches nothing. Emitting it here means a subdomain we just probed unlocks
+	// deep testing on its own, without needing a port scan first.
+	scheme := "http"
+	if strings.HasPrefix(url, "https://") {
+		scheme = "https"
+	}
+	res.Assets = append(res.Assets, state.Asset{
+		ID:    "svc:" + url,
+		Type:  "service",
+		Value: url,
+		Attrs: map[string]string{"service": scheme, "status": resp.Status, "server": server},
+	})
 	res.Findings = append(res.Findings, state.Finding{
 		ID:          "HTTP-" + a.ID,
 		Title:       fmt.Sprintf("HTTP service at %s (%d)", url, resp.StatusCode),

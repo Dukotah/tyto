@@ -9,7 +9,10 @@ package adapter
 
 import (
 	"context"
+	"fmt"
 	"os/exec"
+	"strings"
+	"time"
 
 	"github.com/dukotah/tyto/internal/state"
 )
@@ -18,15 +21,92 @@ import (
 // memory against a runaway tool. Adapters can override per call.
 const DefaultMaxOutput = 1 << 20 // 1 MiB
 
-// Detect returns the first candidate binary found on PATH, or "" if none are
-// installed. Adapters pass their preferred names in order (e.g. "nxc","netexec").
+// execPrefix, when non-empty, wraps EVERY shelled-out command so it runs in a
+// different environment than the host process — e.g. a WSL Kali distro when
+// tyto.exe runs on Windows but should drive the real Kali toolbox. Empty means
+// "run on the host" (the default, and what happens when the tyto binary itself
+// runs inside Kali). Set once at startup via Configure before any run begins, so
+// no locking is needed for the concurrent reads during a run.
+var execPrefix []string
+
+// Configure selects the execution backend from a spec string. It is the single
+// switch that makes the whole tool fleet (and the operator shell) operate Kali:
+//
+//	""              run commands on the host (default / when tyto runs in Kali)
+//	"wsl:<distro>"  run each command via `wsl -d <distro> -- ...`
+//
+// Returns an error for an unrecognized spec so a typo fails loudly at boot
+// rather than silently running on the wrong box.
+func Configure(spec string) error {
+	spec = strings.TrimSpace(spec)
+	switch {
+	case spec == "":
+		execPrefix = nil
+		return nil
+	case strings.HasPrefix(spec, "wsl:"):
+		distro := strings.TrimSpace(strings.TrimPrefix(spec, "wsl:"))
+		if distro == "" {
+			return fmt.Errorf("exec backend %q: empty WSL distro name", spec)
+		}
+		execPrefix = []string{"wsl", "-d", distro, "--"}
+		return nil
+	default:
+		return fmt.Errorf("unknown exec backend %q (want \"\" or \"wsl:<distro>\")", spec)
+	}
+}
+
+// Backend returns a human-readable description of the active backend (for the
+// startup banner), or "" when commands run on the host.
+func Backend() string {
+	if len(execPrefix) == 0 {
+		return ""
+	}
+	return strings.Join(execPrefix[:len(execPrefix)-1], " ") // drop the trailing "--"
+}
+
+// wrap rewrites a logical (name, args) into the actual command to exec, applying
+// the configured backend prefix. With no backend it is the identity.
+func wrap(name string, args []string) (string, []string) {
+	if len(execPrefix) == 0 {
+		return name, args
+	}
+	full := make([]string, 0, len(execPrefix)-1+1+len(args))
+	full = append(full, execPrefix[1:]...) // "-d","<distro>","--"
+	full = append(full, name)
+	full = append(full, args...)
+	return execPrefix[0], full // "wsl"
+}
+
+// Detect returns the first candidate binary available in the execution
+// environment, or "" if none are installed. On the host this is a PATH lookup;
+// under a WSL backend it asks the distro (`command -v`) so detection reflects
+// the box commands actually run on — not the Windows host's PATH.
 func Detect(candidates ...string) string {
 	for _, c := range candidates {
-		if _, err := exec.LookPath(c); err == nil {
+		if available(c) {
 			return c
 		}
 	}
 	return ""
+}
+
+// available reports whether binary c can be run by the active backend.
+func available(c string) bool {
+	if len(execPrefix) == 0 {
+		_, err := exec.LookPath(c)
+		return err == nil
+	}
+	// Probe inside the backend; bound it so a slow/cold WSL can't hang startup.
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	name, args := wrap("command", []string{"-v", c})
+	if err := exec.CommandContext(ctx, name, args...).Run(); err == nil {
+		return true
+	}
+	// `command` is a shell builtin; some `wsl -- command` paths don't resolve it.
+	// Fall back to a login shell so PATH/aliases are loaded like a real terminal.
+	name, args = wrap("bash", []string{"-lc", "command -v " + c})
+	return exec.CommandContext(ctx, name, args...).Run() == nil
 }
 
 // capWriter accumulates up to max bytes but keeps accepting writes (so the child
@@ -56,7 +136,8 @@ func Run(ctx context.Context, name string, args []string, maxBytes int) (string,
 		maxBytes = DefaultMaxOutput
 	}
 	cw := &capWriter{max: maxBytes}
-	cmd := exec.CommandContext(ctx, name, args...)
+	rn, ra := wrap(name, args)
+	cmd := exec.CommandContext(ctx, rn, ra...)
 	cmd.Stdout = cw
 	cmd.Stderr = cw
 	err := cmd.Run()

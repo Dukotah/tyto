@@ -19,10 +19,26 @@ type Authorization struct {
 	AuthorizedOn     string `yaml:"authorized_on"`
 	AgreementRef     string `yaml:"agreement_ref"`
 	EmergencyContact string `yaml:"emergency_contact"`
+	// Mode is how high/exploit actions are authorized:
+	//   "" / "client-grant" — the default: high-risk or exploit-category actions
+	//     require a client-signed Ed25519 grant (ClientPublicKeyB64 + Grants).
+	//   "self-attested" — the OPERATOR attests authorization (bug-bounty /
+	//     self-directed testing where no client signs). High/exploit actions are
+	//     permitted WITHOUT a signed grant, but ONLY for in-scope targets — the
+	//     scope/risk/category/window checks all still gate. The attestation is still
+	//     recorded (AuthorizedBy + AgreementRef remain required in both modes).
+	Mode string `yaml:"mode"`
 	// ClientPublicKeyB64 is the client's Ed25519 public key, pinned out-of-band.
 	ClientPublicKeyB64 string `yaml:"client_public_key"`
 	// Grants are client-signed authorizations for high/exploit actions.
 	Grants []AuthGrant `yaml:"grants"`
+}
+
+// SelfAttested reports whether this engagement uses operator self-attestation
+// instead of a client-signed grant. In self-attested mode the guard treats the
+// authorization gate as satisfied for IN-SCOPE targets; scope is still absolute.
+func (a Authorization) SelfAttested() bool {
+	return a.Mode == "self-attested"
 }
 
 func (a Authorization) validate() error {
@@ -31,6 +47,11 @@ func (a Authorization) validate() error {
 	}
 	if a.AgreementRef == "" {
 		return fmt.Errorf("authorization.agreement_ref is required")
+	}
+	switch a.Mode {
+	case "", "client-grant", "self-attested":
+	default:
+		return fmt.Errorf("authorization.mode %q is invalid (want \"client-grant\" or \"self-attested\")", a.Mode)
 	}
 	return nil
 }

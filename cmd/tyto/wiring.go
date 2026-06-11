@@ -1,23 +1,32 @@
 package main
 
 import (
+	"github.com/dukotah/tyto/internal/action"
 	"github.com/dukotah/tyto/internal/guard"
 	"github.com/dukotah/tyto/internal/tool"
+	"github.com/dukotah/tyto/internal/tool/builtin/apidocs"
 	"github.com/dukotah/tyto/internal/tool/builtin/cmdexec"
+	"github.com/dukotah/tyto/internal/tool/builtin/cookieaudit"
 	"github.com/dukotah/tyto/internal/tool/builtin/corscheck"
 	"github.com/dukotah/tyto/internal/tool/builtin/cvematch"
 	"github.com/dukotah/tyto/internal/tool/builtin/defaultcreds"
 	"github.com/dukotah/tyto/internal/tool/builtin/dirfuzz"
 	"github.com/dukotah/tyto/internal/tool/builtin/dnsenum"
+	"github.com/dukotah/tyto/internal/tool/builtin/dotgit"
 	"github.com/dukotah/tyto/internal/tool/builtin/emailsec"
 	"github.com/dukotah/tyto/internal/tool/builtin/exploitdb"
 	"github.com/dukotah/tyto/internal/tool/builtin/ffufadapter"
 	"github.com/dukotah/tyto/internal/tool/builtin/ftpcheck"
 	"github.com/dukotah/tyto/internal/tool/builtin/gobuster"
+	"github.com/dukotah/tyto/internal/tool/builtin/graphqlcheck"
 	"github.com/dukotah/tyto/internal/tool/builtin/httpmethods"
 	"github.com/dukotah/tyto/internal/tool/builtin/httpprobe"
 	"github.com/dukotah/tyto/internal/tool/builtin/hydra"
+	"github.com/dukotah/tyto/internal/tool/builtin/jsmine"
 	"github.com/dukotah/tyto/internal/tool/builtin/jwtcheck"
+	"github.com/dukotah/tyto/internal/tool/builtin/kali"
+	"github.com/dukotah/tyto/internal/tool/builtin/kerberoast"
+	"github.com/dukotah/tyto/internal/tool/builtin/ldapenum"
 	"github.com/dukotah/tyto/internal/tool/builtin/login"
 	"github.com/dukotah/tyto/internal/tool/builtin/metasploit"
 	"github.com/dukotah/tyto/internal/tool/builtin/niktoadapter"
@@ -26,6 +35,7 @@ import (
 	"github.com/dukotah/tyto/internal/tool/builtin/portscan"
 	"github.com/dukotah/tyto/internal/tool/builtin/redircheck"
 	"github.com/dukotah/tyto/internal/tool/builtin/secretscan"
+	"github.com/dukotah/tyto/internal/tool/builtin/shell"
 	"github.com/dukotah/tyto/internal/tool/builtin/smbenum"
 	"github.com/dukotah/tyto/internal/tool/builtin/sqliexploit"
 	"github.com/dukotah/tyto/internal/tool/builtin/sqlmapadapter"
@@ -54,6 +64,11 @@ func defaultRegistry() *tool.Registry {
 	r.MustRegister(webdiscover.New())
 	r.MustRegister(tlscheck.New())
 	r.MustRegister(webcrawl.New())
+	r.MustRegister(jsmine.New())
+	r.MustRegister(dotgit.New())
+	r.MustRegister(cookieaudit.New())
+	r.MustRegister(graphqlcheck.New())
+	r.MustRegister(apidocs.New())
 	r.MustRegister(webinject.New())
 	r.MustRegister(corscheck.New())
 	r.MustRegister(redircheck.New())
@@ -77,6 +92,9 @@ func defaultRegistry() *tool.Registry {
 	r.MustRegister(defaultcreds.New())
 	r.MustRegister(login.New())
 	r.MustRegister(smbenum.New())
+	// AD/identity tier (identity-category, RiskMedium; read-only enum + roasting).
+	r.MustRegister(ldapenum.New())
+	r.MustRegister(kerberoast.New())
 	r.MustRegister(exploitdb.New())
 	// Kali shell-out adapters (runtime-detected; degrade gracefully if absent).
 	r.MustRegister(nmapscan.New())
@@ -91,7 +109,40 @@ func defaultRegistry() *tool.Registry {
 	r.MustRegister(gobuster.New())
 	r.MustRegister(hydra.New())
 	r.MustRegister(metasploit.New())
+	// The kali tool gives the planner the WHOLE Kali distro (any command), contained
+	// to the Kali VM. Read-only commands run within the risk ceiling; any mutating
+	// command is force-gated through dashboard approval (ApprovalGater) and is
+	// classified RiskHigh by defaultClassifier. This is the supervised way to give
+	// the agent free-form arsenal access without the host-RCE risk of `shell`.
+	r.MustRegister(kali.New())
+	// NOTE: the `shell` tool is deliberately NOT registered here. It runs an
+	// arbitrary command (`bash -lc <cmd>`) on tyto's OWN host, not against the
+	// engagement target — so exposing it to the autonomous planner is a
+	// confused-deputy host-RCE: a hallucinated or prompt-injected action could run
+	// host commands while the guard only ever validated the in-scope *target*. The
+	// operator console constructs the shell tool DIRECTLY (console.runShell /
+	// startOperator), gated by shell.IsReadOnly + explicit operator confirmation —
+	// that path never goes through the planner. Keeping shell out of the registry
+	// means even a hallucinated {tool:"shell"} proposal resolves to "unknown tool"
+	// and is skipped. See TestShellNotPlannerSelectable.
 	return r
+}
+
+// defaultClassifier is the guard.RiskClassifier installed on every guard: it
+// raises an action's effective risk based on its params. Today only the shell
+// tool participates (read-only toolbox inspection stays low; arbitrary commands
+// become high → require authorization/approval). Every other tool returns the
+// passive floor, a no-op that leaves the tool's own MaxRisk authoritative — so
+// installing the classifier is behaviorally identical for the existing fleet.
+func defaultClassifier() guard.RiskClassifier {
+	return func(toolName string, params map[string]string) action.RiskLevel {
+		if toolName == "shell" || toolName == "kali" {
+			// Read-only commands stay low; any arbitrary/mutating command becomes
+			// RiskHigh so the guard's risk ceiling + approval path both apply.
+			return shell.Classify(params["command"])
+		}
+		return action.RiskPassive
+	}
 }
 
 // toolSnapshot builds the immutable, read-only authority the Scope Guard gates

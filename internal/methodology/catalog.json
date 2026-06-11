@@ -190,6 +190,96 @@
       "why": "follow links and forms to discover parameterized endpoints to test"
     },
     {
+      "id": "http-jsmine",
+      "name": "JS endpoint & parameter mining",
+      "phase": "scanning",
+      "category": "recon",
+      "tool": "jsmine",
+      "applies_to": {"service": "http"},
+      "why": "mine JavaScript bundles for hidden API routes, parameters, and secrets to expand the testable surface for injection"
+    },
+    {
+      "id": "https-jsmine",
+      "name": "JS endpoint & parameter mining",
+      "phase": "scanning",
+      "category": "recon",
+      "tool": "jsmine",
+      "applies_to": {"service": "https"},
+      "why": "mine JavaScript bundles for hidden API routes, parameters, and secrets to expand the testable surface for injection"
+    },
+    {
+      "id": "http-apidocs",
+      "name": "Exposed API documentation",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "apidocs",
+      "applies_to": {"service": "http"},
+      "why": "find publicly-served Swagger/OpenAPI specs that map the whole API surface"
+    },
+    {
+      "id": "https-apidocs",
+      "name": "Exposed API documentation",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "apidocs",
+      "applies_to": {"service": "https"},
+      "why": "find publicly-served Swagger/OpenAPI specs that map the whole API surface"
+    },
+    {
+      "id": "http-dotgit",
+      "name": "Exposed .git source disclosure",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "dotgit",
+      "applies_to": {"service": "http"},
+      "why": "check for a web-exposed .git directory that leaks full source history and secrets"
+    },
+    {
+      "id": "https-dotgit",
+      "name": "Exposed .git source disclosure",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "dotgit",
+      "applies_to": {"service": "https"},
+      "why": "check for a web-exposed .git directory that leaks full source history and secrets"
+    },
+    {
+      "id": "http-cookieaudit",
+      "name": "Cookie flag audit",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "cookieaudit",
+      "applies_to": {"service": "http"},
+      "why": "flag session cookies missing Secure/HttpOnly/SameSite"
+    },
+    {
+      "id": "https-cookieaudit",
+      "name": "Cookie flag audit",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "cookieaudit",
+      "applies_to": {"service": "https"},
+      "why": "flag session cookies missing Secure/HttpOnly/SameSite"
+    },
+    {
+      "id": "http-graphql",
+      "name": "GraphQL introspection check",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "graphqlcheck",
+      "applies_to": {"service": "http"},
+      "why": "discover GraphQL endpoints and test whether schema introspection is exposed"
+    },
+    {
+      "id": "https-graphql",
+      "name": "GraphQL introspection check",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "graphqlcheck",
+      "applies_to": {"service": "https"},
+      "why": "discover GraphQL endpoints and test whether schema introspection is exposed"
+    },
+    {
       "id": "http-dirfuzz",
       "name": "Content/endpoint discovery (wordlist)",
       "phase": "scanning",
@@ -296,6 +386,33 @@
       "tool": "smbenum",
       "applies_to": {"service": "smb"},
       "why": "enumerate SMB shares/sessions via NetExec/crackmapexec if installed (optional shell-out adapter)"
+    },
+    {
+      "id": "ldap-enum-adapter",
+      "name": "LDAP/AD directory enumeration (adapter)",
+      "phase": "scanning",
+      "category": "identity",
+      "tool": "ldapenum",
+      "applies_to": {"service": "ldap"},
+      "why": "enumerate AD users/groups and password policy over LDAP via NetExec (uses provisioned domain creds if supplied; anonymous otherwise)"
+    },
+    {
+      "id": "ldaps-enum-adapter",
+      "name": "LDAP/AD directory enumeration (adapter)",
+      "phase": "scanning",
+      "category": "identity",
+      "tool": "ldapenum",
+      "applies_to": {"service": "ldaps"},
+      "why": "enumerate AD users/groups and password policy over LDAPS via NetExec"
+    },
+    {
+      "id": "ad-kerberoast",
+      "name": "Kerberos roasting (AS-REP + Kerberoast)",
+      "phase": "exploitation",
+      "category": "identity",
+      "tool": "kerberoast",
+      "applies_to": {"service": "ldap"},
+      "why": "request AS-REP/TGS tickets for pre-auth-disabled and SPN accounts; recovered hashes are crackable offline (hashcat 18200/13100)"
     },
     {
       "id": "http-login",
@@ -440,6 +557,24 @@
       "tool": "subfinder",
       "applies_to": {"asset_type": "domain"},
       "why": "passively enumerate subdomains with subfinder if installed"
+    },
+    {
+      "id": "domain-portscan",
+      "name": "Port-scan a discovered (sub)domain",
+      "phase": "scanning",
+      "category": "scan",
+      "tool": "portscan",
+      "applies_to": {"asset_type": "domain"},
+      "why": "port-scan a discovered subdomain to find its exposed services so web/service testing can chain onto it"
+    },
+    {
+      "id": "domain-httpprobe",
+      "name": "HTTP probe a discovered (sub)domain",
+      "phase": "recon",
+      "category": "recon",
+      "tool": "httpprobe",
+      "applies_to": {"asset_type": "domain"},
+      "why": "fingerprint HTTP(S) on a discovered subdomain to surface a web service for deeper testing"
     },
     {
       "id": "https-testssl",

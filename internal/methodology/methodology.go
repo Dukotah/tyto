@@ -84,11 +84,74 @@ func Recommend(assets []*state.Asset, availableTools map[string]bool) []Recommen
 			recs = append(recs, Recommendation{Technique: t, Target: a.Value})
 		}
 	}
+	// Rank so the planner sees the highest-VALUE techniques first: actual
+	// bug-finding (exploitation/vuln-analysis phases — injection, secrets, known
+	// CVEs) outranks enabling work (scanning/recon — fingerprinting, crawling).
+	// Without this the prompt was alphabetical, so a slow local model burned its
+	// early cycles on recon and rarely reached the tools that find real findings.
+	// Within the same rank, order is stable by target then technique id so the
+	// prompt stays reproducible.
 	sort.SliceStable(recs, func(i, j int) bool {
+		if pi, pj := techRank(recs[i].Technique), techRank(recs[j].Technique); pi != pj {
+			return pi > pj
+		}
+		// Within a phase, prefer FAST native tools over slow Kali shell-outs, so a
+		// run gets through discovery + the bug-finders quickly instead of stalling
+		// on a 90s nmap/nuclei. The slow tools still appear (just lower) for depth.
+		if si, sj := slowTool(recs[i].Technique.Tool), slowTool(recs[j].Technique.Tool); si != sj {
+			return !si // fast (false) sorts before slow (true)
+		}
 		if recs[i].Target != recs[j].Target {
 			return recs[i].Target < recs[j].Target
 		}
 		return recs[i].Technique.ID < recs[j].Technique.ID
 	})
 	return recs
+}
+
+// slowTools are the external Kali shell-out adapters: high-value but each costs
+// seconds-to-minutes per run (process spawn + WSL round-trip + their own scans).
+// Native Go tools run in-process in milliseconds, so they go first.
+var slowTools = map[string]bool{
+	"nmapscan": true, "nucleiscan": true, "nikto": true, "whatweb": true,
+	"ffuf": true, "gobuster": true, "wpscan": true, "sqlmap": true,
+	"testssl": true, "subfinder": true, "hydra": true, "metasploit": true,
+}
+
+func slowTool(tool string) bool { return slowTools[tool] }
+
+// gatewayTools are prerequisites that UNLOCK high-value testing: webcrawl and
+// jsmine discover the parameterized endpoints that every injection tool
+// (webinject, ssti, redircheck, sqliexploit) needs. Without them those tools
+// find "no parameters to test", so the gateways must run BEFORE them — even
+// though discovery is only a "scanning" phase, its value here is exploitation-tier.
+var gatewayTools = map[string]bool{"webcrawl": true, "jsmine": true}
+
+// techRank is the effective planner priority for a technique: gateway discovery
+// tools are boosted above everything (run them first to enable injection), else
+// it falls back to the phase weight.
+func techRank(t Technique) int {
+	if gatewayTools[t.Tool] {
+		return 5
+	}
+	return phaseRank(t.Phase)
+}
+
+// phaseRank weights PTES phases by how directly they produce findings, so the
+// planner prompt front-loads the techniques that actually find vulnerabilities.
+// Scanning still ranks above recon (it discovers the endpoints that exploitation
+// then targets), so discovery isn't starved.
+func phaseRank(phase string) int {
+	switch phase {
+	case "exploitation":
+		return 4
+	case "vuln-analysis":
+		return 3
+	case "scanning":
+		return 2
+	case "recon":
+		return 1
+	default:
+		return 0
+	}
 }

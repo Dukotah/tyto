@@ -14,8 +14,20 @@ import (
 type Ollama struct {
 	BaseURL string
 	Model   string
-	http    *http.Client
+	// NumCtx is the context window (tokens) requested per call. Ollama defaults to
+	// ~2-4k when unset, which SILENTLY TRUNCATES a real planning prompt — once the
+	// asset graph grows (e.g. jsmine adds dozens of endpoints) the model stops
+	// seeing the recommendations and loops on basic tools. Sizing this up is what
+	// lets the planner actually progress through a full engagement.
+	NumCtx int
+	http   *http.Client
 }
+
+// defaultNumCtx sizes the context window. 8k comfortably fits a real planning
+// prompt (scope + ~dozens of assets + the ranked recommendation frontier ≈ 4-5k
+// tokens) with headroom, while staying small enough that CPU-only inference of a
+// large model stays responsive. Raise it for huge engagements; lower it for speed.
+const defaultNumCtx = 8192
 
 // NewOllama returns an Ollama client. Empty args fall back to sensible defaults.
 func NewOllama(baseURL, model string) *Ollama {
@@ -28,6 +40,7 @@ func NewOllama(baseURL, model string) *Ollama {
 	return &Ollama{
 		BaseURL: baseURL,
 		Model:   model,
+		NumCtx:  defaultNumCtx,
 		http:    &http.Client{Timeout: 240 * time.Second},
 	}
 }
@@ -47,6 +60,19 @@ type ollamaRequest struct {
 	// it false so planning skips the long <think> stream — far faster on CPU and
 	// it keeps the structured-output grammar clean. Ignored by non-thinking models.
 	Think *bool `json:"think,omitempty"`
+	// Options carries generation parameters (context window etc.). Pointer +
+	// omitempty so a nil leaves the wire identical to before for callers that
+	// don't set it.
+	Options *ollamaOptions `json:"options,omitempty"`
+}
+
+// ollamaOptions are per-request generation parameters. num_ctx is the load-bearing
+// one (see Ollama.NumCtx); temperature is kept low for deterministic planning and
+// num_predict bounds the response so a runaway generation can't stall a cycle.
+type ollamaOptions struct {
+	NumCtx      int     `json:"num_ctx,omitempty"`
+	Temperature float64 `json:"temperature,omitempty"`
+	NumPredict  int     `json:"num_predict,omitempty"`
 }
 
 type ollamaResponse struct {
@@ -77,6 +103,10 @@ func (o *Ollama) GenerateSchema(ctx context.Context, system, user string, schema
 
 func (o *Ollama) generate(ctx context.Context, system, user string, format json.RawMessage) (string, error) {
 	noThink := false
+	numCtx := o.NumCtx
+	if numCtx <= 0 {
+		numCtx = defaultNumCtx
+	}
 	body, err := json.Marshal(ollamaRequest{
 		Model:  o.Model,
 		System: system,
@@ -84,6 +114,11 @@ func (o *Ollama) generate(ctx context.Context, system, user string, format json.
 		Stream: false,
 		Format: format,
 		Think:  &noThink,
+		Options: &ollamaOptions{
+			NumCtx:      numCtx,
+			Temperature: 0.2,
+			NumPredict:  2048,
+		},
 	})
 	if err != nil {
 		return "", err

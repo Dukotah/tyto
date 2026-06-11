@@ -44,6 +44,13 @@ type Finding struct {
 	Description string   `planner:"quarantined"`
 	Evidence    string   `planner:"quarantined"` // raw tool output — never into the prompt
 	Tool        string   `planner:"quarantined"`
+	// Repro is the operator-reproducible steps (a request, a command line) that
+	// trigger the condition — the "how to confirm" half of a submittable finding.
+	// Impact is the "so what": the consequence to the client if exploited. Both
+	// are optional, tool/operator-controlled free text, so they are quarantined
+	// from the planner prompt and rendered only operator-facing.
+	Repro  string `planner:"quarantined"`
+	Impact string `planner:"quarantined"`
 	// CVSS is an optional CVSS v3.1 vector string (e.g. "CVSS:3.1/AV:N/...");
 	// the report derives a base score from it. Report-facing, not planner-facing.
 	CVSS string `planner:"quarantined"`

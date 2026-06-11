@@ -253,16 +253,17 @@ func severityFor(path string, status int) state.Severity {
 	}
 }
 
-// loadWords returns the wordlist: an external file when path is non-empty,
-// otherwise the embedded list. '#' comments and blank lines are skipped.
+// loadWords returns the wordlist: an external file when path is non-empty and
+// readable, otherwise the embedded list. A supplied-but-unreadable path falls
+// back to the embedded list rather than failing — so a planner that hands over a
+// bogus path (e.g. a bare "common.txt") can't break content discovery. '#'
+// comments and blank lines are skipped.
 func loadWords(path string) ([]string, error) {
 	src := embeddedWordlist
 	if p := strings.TrimSpace(path); p != "" {
-		b, err := os.ReadFile(p)
-		if err != nil {
-			return nil, err
+		if b, err := os.ReadFile(p); err == nil {
+			src = string(b)
 		}
-		src = string(b)
 	}
 	var words []string
 	seen := map[string]bool{}

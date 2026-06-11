@@ -70,8 +70,9 @@ func TestDuplicateActionSkipped(t *testing.T) {
 	if err := e.Run(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	// Both proposals collapse to one canonical key, so only 2 assets exist (not 4).
-	if got := len(st.Assets()); got != 2 {
+	// Both proposals collapse to one canonical key, so only 2 discovered assets
+	// exist (not 4), separate from the scope seed.
+	if got := len(discovered(st)); got != 2 {
 		t.Fatalf("duplicate action should not double-record assets; got %d", got)
 	}
 }

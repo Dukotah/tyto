@@ -20,11 +20,25 @@ func TestHTTPProbeFingerprints(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !res.Success || len(res.Assets) != 1 || res.Assets[0].Type != "url" {
-		t.Fatalf("expected one url asset on success, got %+v", res.Assets)
+	// On success the probe emits BOTH a `url` asset (fingerprint) and a `service`
+	// asset (the methodology gate for the web battery, tagged http/https).
+	foundURL, foundSvc := false, false
+	for _, a := range res.Assets {
+		switch a.Type {
+		case "url":
+			foundURL = true
+			if a.Attrs["server"] != "test-srv/2.0" || a.Attrs["title"] != "Login" {
+				t.Fatalf("fingerprint attrs wrong: %+v", a.Attrs)
+			}
+		case "service":
+			foundSvc = true
+			if a.Attrs["service"] != "http" {
+				t.Fatalf("service asset should be tagged service=http, got %+v", a.Attrs)
+			}
+		}
 	}
-	if res.Assets[0].Attrs["server"] != "test-srv/2.0" || res.Assets[0].Attrs["title"] != "Login" {
-		t.Fatalf("fingerprint attrs wrong: %+v", res.Assets[0].Attrs)
+	if !res.Success || !foundURL || !foundSvc {
+		t.Fatalf("expected success with a url asset and a service asset, got success=%v assets=%+v", res.Success, res.Assets)
 	}
 	if len(res.Findings) != 1 || !res.Findings[0].Validated {
 		t.Fatalf("expected one validated info finding, got %+v", res.Findings)
