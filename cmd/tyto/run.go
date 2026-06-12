@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"runtime"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -21,6 +23,7 @@ import (
 	"github.com/dukotah/tyto/internal/state"
 	"github.com/dukotah/tyto/internal/store"
 	"github.com/dukotah/tyto/internal/sysinfo"
+	"github.com/dukotah/tyto/internal/tool/adapter"
 	"github.com/dukotah/tyto/internal/validate"
 	"github.com/dukotah/tyto/pkg/version"
 )
@@ -44,6 +47,9 @@ type runOptions struct {
 	// (engine HuntMode) instead of the model planner — the overnight bounty engine.
 	hunt         bool
 	huntMaxHosts int
+	// exec selects where shell-out tools run: ""=host (auto-detects Kali WSL on
+	// Windows), "wsl:<distro>"=a WSL distro. Mirrors `tyto serve --exec`.
+	exec string
 }
 
 func newRunCmd() *cobra.Command {
@@ -68,6 +74,7 @@ func newRunCmd() *cobra.Command {
 	f.BoolVar(&o.resume, "resume", false, "resume from a saved state snapshot (skips completed actions)")
 	f.StringVar(&o.statePath, "state", "", "state snapshot path (default: <engagement-id>.state.json)")
 	f.StringVar(&o.db, "db", "", "persist/resume via a SQLite engagement DB at this path (instead of the JSON snapshot)")
+	f.StringVar(&o.exec, "exec", "", `where shell-out tools run: ""=host (auto-detects Kali WSL on Windows), "wsl:<distro>"`)
 	return cmd
 }
 
@@ -80,6 +87,26 @@ func (o *runOptions) run(cmd *cobra.Command, _ []string) error {
 	eng, err := engagement.Load(o.engPath)
 	if err != nil {
 		return err
+	}
+
+	// Route shell-out tools (subfinder/nmap/nuclei/…) to an execution backend so
+	// the sweep can actually enumerate. Explicit --exec/$TYTO_EXEC wins; otherwise
+	// auto-detect a Kali WSL distro on Windows — same behavior as `tyto serve`, so
+	// `tyto hunt`/`run` aren't silently host-only (where subfinder doesn't exist).
+	spec := strings.TrimSpace(o.exec)
+	if spec == "" {
+		spec = strings.TrimSpace(os.Getenv("TYTO_EXEC"))
+	}
+	if spec == "" && runtime.GOOS == "windows" {
+		if d := detectKaliWSL(); d != "" {
+			spec = "wsl:" + d
+		}
+	}
+	if err := adapter.Configure(spec); err != nil {
+		return fmt.Errorf("exec backend: %w", err)
+	}
+	if spec != "" {
+		fmt.Fprintf(out, "tool execution backend: %s\n", spec)
 	}
 
 	// Hunt mode is deterministic and never calls the model, so default the report

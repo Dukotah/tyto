@@ -26,6 +26,7 @@ func newHuntCmd() *cobra.Command {
 	}
 	f := cmd.Flags()
 	f.StringVar(&o.engPath, "engagement", "", "path to engagement YAML (required; defines the authorized wildcard scope)")
+	f.StringVar(&o.exec, "exec", "", `where shell-out tools run: ""=host (auto-detects Kali WSL on Windows), "wsl:<distro>"`)
 	f.BoolVar(&o.dryRun, "dry-run", false, "plan and scope-guard the sweep without executing any tool (preview the deterministic action sequence)")
 	f.IntVar(&o.huntMaxHosts, "max-hosts", 0, "cap the host fan-out (0 = default 500; a loud note is emitted if the cap bites)")
 	f.IntVar(&o.cycles, "cycles", 200, "max sweep cycles (the sweep self-terminates when the scope is exhausted)")
