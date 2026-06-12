@@ -125,6 +125,19 @@ func (e *Engine) CompletedActionKeys() []string {
 	return keys
 }
 
+// Sessions returns a copy of the host→session-cookie map established during the
+// run (keyed by bare, port-stripped host). The report finalize path uses it to
+// re-prove findings with the SAME authentication the scan had, so an
+// authenticated-only finding isn't wrongly refuted on an unauthenticated
+// re-fetch. Returns a copy so callers can't mutate engine state.
+func (e *Engine) Sessions() map[string]string {
+	out := make(map[string]string, len(e.sessions))
+	for h, c := range e.sessions {
+		out[h] = c
+	}
+	return out
+}
+
 // highImpact reports whether an action warrants human approval: an exploit/
 // identity/post-exploit/dos tool, or any RiskHigh tool.
 func highImpact(t tool.Tool) bool {

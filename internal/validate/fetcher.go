@@ -4,6 +4,8 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 )
 
@@ -18,7 +20,27 @@ type HTTPFetcher struct {
 	UserAgent string
 	// Cookie is replayed on every re-verification request so an established
 	// session is preserved (re-proof must run with the same auth the scan had).
+	// It is the fallback when no host-specific cookie matches.
 	Cookie string
+	// Cookies maps a bare host (port-stripped, lowercased) to the session cookie
+	// established for it during the run, so re-proof against a multi-host scope
+	// runs authenticated per host (mirrors the engine's per-host session map).
+	// A matching host entry takes precedence over Cookie.
+	Cookies map[string]string
+}
+
+// cookieFor returns the cookie to replay for rawURL: the host-specific session
+// if one was established, else the fallback Cookie.
+func (h *HTTPFetcher) cookieFor(rawURL string) string {
+	if len(h.Cookies) > 0 {
+		if u, err := url.Parse(rawURL); err == nil {
+			host := strings.ToLower(u.Hostname())
+			if c := h.Cookies[host]; c != "" {
+				return c
+			}
+		}
+	}
+	return h.Cookie
 }
 
 // NewHTTPFetcher returns an HTTPFetcher with a bounded-timeout client.
@@ -46,8 +68,8 @@ func (h *HTTPFetcher) Fetch(ctx context.Context, rawURL string) (Response, error
 	if h.UserAgent != "" {
 		req.Header.Set("User-Agent", h.UserAgent)
 	}
-	if h.Cookie != "" {
-		req.Header.Set("Cookie", h.Cookie)
+	if c := h.cookieFor(rawURL); c != "" {
+		req.Header.Set("Cookie", c)
 	}
 	resp, err := h.Client.Do(req)
 	if err != nil {

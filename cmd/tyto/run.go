@@ -225,11 +225,13 @@ func (o *runOptions) run(cmd *cobra.Command, _ []string) error {
 	if o.noReport {
 		return nil
 	}
-	return emitReport(o, eng, st, out)
+	return emitReport(o, eng, st, eg.Sessions(), out)
 }
 
-// emitReport renders the chosen format and writes it to stdout or a file.
-func emitReport(o *runOptions, eng *engagement.Engagement, st *state.State, out io.Writer) error {
+// emitReport renders the chosen format and writes it to stdout or a file. The
+// sessions map (host→cookie, from the just-finished run) is threaded into the
+// submission report's adversarial re-proof so it re-fetches authenticated.
+func emitReport(o *runOptions, eng *engagement.Engagement, st *state.State, sessions map[string]string, out io.Writer) error {
 	var data []byte
 	switch o.reportFormat {
 	case "md", "markdown":
@@ -239,7 +241,9 @@ func emitReport(o *runOptions, eng *engagement.Engagement, st *state.State, out 
 		// (refute-by-default); set-aside findings are retained as flagged noise.
 		vctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 		defer cancel()
-		data = []byte(report.RenderSubmissionValidated(vctx, eng, st, validate.NewHTTPFetcher()))
+		fetch := validate.NewHTTPFetcher()
+		fetch.Cookies = sessions // re-prove authenticated, per host, with the run's sessions
+		data = []byte(report.RenderSubmissionValidated(vctx, eng, st, fetch))
 	case "json":
 		b, err := report.RenderJSON(eng, st)
 		if err != nil {

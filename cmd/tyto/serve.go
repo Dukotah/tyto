@@ -85,6 +85,10 @@ type console struct {
 	// every time they mention it down the chat. The first confirmation is still
 	// recorded in the engagement's authorization record + audit trail.
 	authorizedTargets map[string]bool
+	// runSessions is a snapshot of the host→session-cookie map from the most recent
+	// run, captured at run end so the submission report's adversarial re-proof can
+	// re-fetch authenticated (see handleReport / runEngagement).
+	runSessions map[string]string
 }
 
 // normTarget canonicalizes a target for the authorized-once set: lowercased,
@@ -179,7 +183,7 @@ func newServeCmd() *cobra.Command {
 			mux.HandleFunc("/api/methodology", c.handleMethodology)
 			mux.HandleFunc("/api/run", c.handleRun)
 			mux.HandleFunc("/api/stop", c.handleStop)
-		mux.HandleFunc("/api/clear", c.handleClear)
+			mux.HandleFunc("/api/clear", c.handleClear)
 			mux.HandleFunc("/api/approve", c.handleApprove)
 			mux.HandleFunc("/api/chat", c.handleChat)
 			mux.HandleFunc("/api/events", c.handleEvents)
@@ -476,6 +480,14 @@ func (c *console) runEngagement(ctx context.Context, eng *engagement.Engagement,
 		c.broadcast(engine.Event{Kind: "error", Message: err.Error()})
 		c.broadcast(engine.Event{Kind: "done"})
 	}
+
+	// Capture the run's established sessions so the submission report's adversarial
+	// re-proof (handleReport) runs with the SAME authentication the scan had — an
+	// authenticated-only finding would otherwise be re-fetched logged-out and
+	// wrongly refuted. Kept on the console because the engine is gone by report time.
+	c.mu.Lock()
+	c.runSessions = eg.Sessions()
+	c.mu.Unlock()
 }
 
 // handleStop cancels an in-progress run.
@@ -1581,6 +1593,7 @@ func (c *console) handleFindings(w http.ResponseWriter, _ *http.Request) {
 func (c *console) handleReport(w http.ResponseWriter, r *http.Request) {
 	c.mu.Lock()
 	eng, st := c.eng, c.st
+	sessions := c.runSessions
 	c.mu.Unlock()
 	if eng == nil || st == nil {
 		http.Error(w, "no engagement loaded — start a run first", http.StatusConflict)
@@ -1608,7 +1621,9 @@ func (c *console) handleReport(w http.ResponseWriter, r *http.Request) {
 		// download.
 		vctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 		defer cancel()
-		body, contentType, ext = []byte(report.RenderSubmissionValidated(vctx, eng, st, validate.NewHTTPFetcher())), "text/markdown; charset=utf-8", "md"
+		fetch := validate.NewHTTPFetcher()
+		fetch.Cookies = sessions // re-prove authenticated, per host, with the run's sessions
+		body, contentType, ext = []byte(report.RenderSubmissionValidated(vctx, eng, st, fetch)), "text/markdown; charset=utf-8", "md"
 	case "html":
 		body, err = report.RenderHTML(eng, st)
 		contentType, ext = "text/html; charset=utf-8", "html"
