@@ -4,6 +4,7 @@ import (
 	"github.com/dukotah/tyto/internal/action"
 	"github.com/dukotah/tyto/internal/guard"
 	"github.com/dukotah/tyto/internal/tool"
+	"github.com/dukotah/tyto/internal/tool/builtin/accesscontrol"
 	"github.com/dukotah/tyto/internal/tool/builtin/apidocs"
 	"github.com/dukotah/tyto/internal/tool/builtin/cmdexec"
 	"github.com/dukotah/tyto/internal/tool/builtin/cookieaudit"
@@ -19,6 +20,7 @@ import (
 	"github.com/dukotah/tyto/internal/tool/builtin/ftpcheck"
 	"github.com/dukotah/tyto/internal/tool/builtin/gobuster"
 	"github.com/dukotah/tyto/internal/tool/builtin/graphqlcheck"
+	"github.com/dukotah/tyto/internal/tool/builtin/hostheader"
 	"github.com/dukotah/tyto/internal/tool/builtin/httpmethods"
 	"github.com/dukotah/tyto/internal/tool/builtin/httpprobe"
 	"github.com/dukotah/tyto/internal/tool/builtin/hydra"
@@ -80,6 +82,11 @@ func defaultRegistry() *tool.Registry {
 	r.MustRegister(corscheck.New())
 	r.MustRegister(redircheck.New())
 	r.MustRegister(httpmethods.New())
+	// Host-header injection (cache/reset poisoning) — reflection-detection only.
+	r.MustRegister(hostheader.New())
+	// Broken-access-control / IDOR — GET-only differential (authed-vs-anon +
+	// object-id mutation), refute-by-default. RiskMedium (may read another object).
+	r.MustRegister(accesscontrol.New())
 	r.MustRegister(dnsenum.New())
 	r.MustRegister(sshcheck.New())
 	r.MustRegister(ftpcheck.New())

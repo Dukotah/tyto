@@ -235,6 +235,33 @@
       "why": "render JavaScript single-page apps in headless Chrome to discover links, forms, and XHR/fetch endpoints the static crawlers never see"
     },
     {
+      "id": "endpoint-access-control",
+      "name": "Broken access control / IDOR testing",
+      "phase": "exploitation",
+      "category": "scan",
+      "tool": "accesscontrol",
+      "applies_to": {"asset_type": "endpoint"},
+      "why": "differential GET-only test of a parameterized endpoint: authenticated-vs-anonymous (missing auth) and object-id mutation (IDOR) to find records readable without proper authorization"
+    },
+    {
+      "id": "http-host-header-injection",
+      "name": "Host header injection (cache / reset poisoning)",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "hostheader",
+      "applies_to": {"service": "http"},
+      "why": "test whether the app reflects a spoofed Host / X-Forwarded-Host into absolute links or a Location redirect (cache poisoning, password-reset poisoning)"
+    },
+    {
+      "id": "https-host-header-injection",
+      "name": "Host header injection (cache / reset poisoning)",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "hostheader",
+      "applies_to": {"service": "https"},
+      "why": "test whether the app reflects a spoofed Host / X-Forwarded-Host into absolute links or a Location redirect (cache poisoning, password-reset poisoning)"
+    },
+    {
       "id": "http-oob",
       "name": "Out-of-band injection probing (blind SSRF / RCE)",
       "phase": "vuln-analysis",
