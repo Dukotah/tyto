@@ -128,8 +128,31 @@ func (c *console) isAuthorized(target string) bool {
 		return false
 	}
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.authorizedTargets[k]
+	eng := c.eng
+	authed := c.authorizedTargets[k]
+	if !authed {
+		// Parent-domain coverage: attesting example.com covers www.example.com,
+		// api.example.com, etc. — one "yes" shouldn't need re-confirming per
+		// subdomain the operator naturally types.
+		for a := range c.authorizedTargets {
+			if a != "" && strings.HasSuffix(k, "."+a) {
+				authed = true
+				break
+			}
+		}
+	}
+	c.mu.Unlock()
+	if authed {
+		return true
+	}
+	// A LOADED ENGAGEMENT'S SCOPE *IS* AUTHORIZATION — the operator already
+	// defined it (via the panel, a YAML, or a confirmed paste). The Scope Guard
+	// enforces it regardless; re-asking the operator to confirm an in-scope target
+	// is the friction that made the console feel stiff. Trust the scope.
+	if eng != nil && eng.Scope.Contains(target) {
+		return true
+	}
+	return false
 }
 
 func newServeCmd() *cobra.Command {
@@ -184,6 +207,7 @@ func newServeCmd() *cobra.Command {
 			mux.HandleFunc("/api/run", c.handleRun)
 			mux.HandleFunc("/api/stop", c.handleStop)
 			mux.HandleFunc("/api/clear", c.handleClear)
+			mux.HandleFunc("/api/engage", c.handleEngage)
 			mux.HandleFunc("/api/approve", c.handleApprove)
 			mux.HandleFunc("/api/chat", c.handleChat)
 			mux.HandleFunc("/api/events", c.handleEvents)
@@ -371,7 +395,7 @@ func (c *console) startRun(engPath, objective, planner string, cycles int, depth
 	if err != nil {
 		return "load engagement: " + err.Error()
 	}
-	return c.launchEngagement(eng, objective, planner, cycles, depth, dryRun, requireApproval)
+	return c.launchEngagement(eng, objective, planner, cycles, depth, dryRun, requireApproval, false)
 }
 
 // launchEngagement starts the autonomous run goroutine for an already-built
@@ -379,7 +403,7 @@ func (c *console) startRun(engPath, objective, planner string, cycles int, depth
 // conversational pentest on-ramp). The objective becomes the model's top-priority
 // instruction; the guard still gates every action against the engagement's scope.
 // Returns "" on success.
-func (c *console) launchEngagement(eng *engagement.Engagement, objective, planner string, cycles int, depth string, dryRun, requireApproval bool) string {
+func (c *console) launchEngagement(eng *engagement.Engagement, objective, planner string, cycles int, depth string, dryRun, requireApproval, hunt bool) string {
 	c.mu.Lock()
 	already := c.running
 	c.mu.Unlock()
@@ -388,6 +412,9 @@ func (c *console) launchEngagement(eng *engagement.Engagement, objective, planne
 	}
 	if obj := strings.TrimSpace(objective); obj != "" {
 		eng.Objectives = append([]string{"OPERATOR INSTRUCTION (top priority): " + obj}, eng.Objectives...)
+	}
+	if hunt {
+		planner = "mock" // the deterministic sweep never calls the model
 	}
 	client, err := c.plannerClient(runReq{Planner: planner}, eng)
 	if err != nil {
@@ -401,7 +428,7 @@ func (c *console) launchEngagement(eng *engagement.Engagement, objective, planne
 	c.mu.Lock()
 	c.eng, c.st, c.auditBuf, c.history, c.running, c.runCancel = eng, st, &safeBuffer{}, nil, true, cancel
 	c.mu.Unlock()
-	go c.runEngagement(ctx, eng, st, client, cycles, depth, dryRun, requireApproval)
+	go c.runEngagement(ctx, eng, st, client, cycles, depth, dryRun, requireApproval, hunt)
 	return ""
 }
 
@@ -426,7 +453,7 @@ func (c *console) plannerClient(req runReq, eng *engagement.Engagement) (llm.Cli
 	}
 }
 
-func (c *console) runEngagement(ctx context.Context, eng *engagement.Engagement, st *state.State, client llm.Client, cycles int, depth string, dryRun, requireApproval bool) {
+func (c *console) runEngagement(ctx context.Context, eng *engagement.Engagement, st *state.State, client llm.Client, cycles int, depth string, dryRun, requireApproval, hunt bool) {
 	defer func() {
 		c.mu.Lock()
 		c.running = false
@@ -472,6 +499,7 @@ func (c *console) runEngagement(ctx context.Context, eng *engagement.Engagement,
 		reg, st, alog, io.Discard, engine.Options{
 			DryRun: dryRun, MaxCycles: cycles, OnEvent: c.broadcast,
 			RequireApproval: requireApproval, Approver: c.approve,
+			HuntMode: hunt,
 		})
 
 	// ctx is cancelable via /api/stop; the run otherwise continues even if the

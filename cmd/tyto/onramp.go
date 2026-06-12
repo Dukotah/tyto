@@ -130,7 +130,7 @@ func (c *console) launchPentest(target, depth string) (string, bool) {
 	}
 	objective := "Run a thorough authorized " + depth + " assessment of " + target +
 		": enumerate hosts and services, fingerprint them, find and validate vulnerabilities, and report findings."
-	if msg := c.launchEngagement(eng, objective, "ollama", 8, depth, false, false); msg != "" {
+	if msg := c.launchEngagement(eng, objective, "ollama", 8, depth, false, false, false); msg != "" {
 		return "I couldn't start the assessment: " + msg, false
 	}
 	// The operator authorized this target; remember it for the session so a later

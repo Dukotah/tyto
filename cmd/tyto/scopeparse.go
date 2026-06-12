@@ -387,7 +387,7 @@ func (c *console) commitScopeEngagement(eng *engagement.Engagement) (string, boo
 	path, saveErr := saveSelfAttestedEngagement(eng)
 	objective := "Assess the authorized bug-bounty scope: enumerate the in-scope hosts and services, " +
 		"fingerprint them, find and validate vulnerabilities across the scope, and report findings."
-	if msg := c.launchEngagement(eng, objective, "ollama", 8, "scan", false, false); msg != "" {
+	if msg := c.launchEngagement(eng, objective, "ollama", 8, "scan", false, false, false); msg != "" {
 		where := "the Run tab"
 		if saveErr == nil {
 			where = "`" + path + "`"
