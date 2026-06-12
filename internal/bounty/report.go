@@ -203,6 +203,14 @@ func tierFor(i Issue) Tier {
 	if i.Class.neverSubmit() {
 		return TierNoise
 	}
+	// An INFO-severity issue is a negative or purely-informational result — e.g.
+	// the tools' own "No subdomain-takeover detected" / "No exposed .git directory"
+	// findings, which carry a payable-class title AND Validated=true but describe
+	// the ABSENCE of a bug. A real takeover/.git/secret/CVE finding is always
+	// emitted at Low+ severity, so INFO can never reach the submit body.
+	if i.Severity <= state.SeverityInfo {
+		return TierNoise
+	}
 	if i.anyConfirmed {
 		return TierValidated
 	}

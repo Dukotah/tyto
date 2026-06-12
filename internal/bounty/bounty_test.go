@@ -380,3 +380,23 @@ func TestClassify_NegativeTitlesNeverPayable(t *testing.T) {
 		}
 	}
 }
+
+// TestBuild_InfoNegativeNeverActionable reproduces the live-run bug: the tools'
+// INFO-severity negative results ("No subdomain-takeover detected", "No exposed
+// .git directory") carry a payable-class title AND Validated=true, but must NEVER
+// reach the actionable submit body — they describe the absence of a bug.
+func TestBuild_InfoNegativeNeverActionable(t *testing.T) {
+	findings := []state.Finding{
+		{ID: "1", Tool: "subtakeover", Title: "No subdomain-takeover detected", Target: "https://www.x.com", Severity: state.SeverityInfo, Validated: true},
+		{ID: "2", Tool: "dotgit", Title: "No exposed .git directory", Target: "https://www.x.com", Severity: state.SeverityInfo, Validated: true},
+	}
+	g := Build(findings, nil)
+	if len(g.Actionable()) != 0 {
+		t.Fatalf("INFO-severity negatives leaked into actionable: %d issue(s)", len(g.Actionable()))
+	}
+	// A genuine HIGH takeover with the same tool must still be actionable.
+	real := []state.Finding{{ID: "3", Tool: "subtakeover", Title: "Possible subdomain takeover (GitHub Pages)", Target: "https://stale.x.com", Severity: state.SeverityHigh, Validated: true}}
+	if len(Build(real, nil).Actionable()) != 1 {
+		t.Fatal("a genuine HIGH takeover must remain actionable")
+	}
+}
