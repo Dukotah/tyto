@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/dukotah/tyto/internal/bounty"
 	"github.com/dukotah/tyto/internal/cvss"
 	"github.com/dukotah/tyto/internal/engagement"
 	"github.com/dukotah/tyto/internal/state"
@@ -180,6 +181,30 @@ func verdictToNoise(vd validate.Verdict, why string) SubmissionFinding {
 // validator set aside is retained, tagged, under "flagged as noise".
 func RenderSubmissionValidated(ctx context.Context, eng *engagement.Engagement, st *state.State, fetch validate.Fetcher) string {
 	return renderSubmission(BuildSubmissionValidated(ctx, eng, st, fetch))
+}
+
+// RenderBounty renders the BOUNTY submission gate: the payability-tiered report
+// that foregrounds the payable-for-an-automated-tool classes (subdomain takeover,
+// exposed .git / secrets / config, known-CVE) as actionable CANDIDATES instead of
+// burying them in noise. This is the no-network overnight-sweep output — no live
+// validation, so a finding reaches the actionable body on its class + tool signal
+// alone (still gated by the never-submit filter + negation guard in internal/bounty).
+func RenderBounty(eng *engagement.Engagement, st *state.State) string {
+	return bounty.RenderGate(eng.ID, bounty.Build(st.Findings(), nil))
+}
+
+// RenderBountyValidated additionally consults the validation brain: any candidate
+// a live verifier re-proves is promoted from CANDIDATE to VALIDATED (submit-first).
+// fetch should carry the run's per-host session cookies (see handleReport).
+func RenderBountyValidated(ctx context.Context, eng *engagement.Engagement, st *state.State, fetch validate.Fetcher) string {
+	verdicts := validate.New(fetch).ValidateAll(ctx, st.Findings())
+	confirmed := map[string]bool{}
+	for _, vd := range verdicts {
+		if vd.Confirmed() {
+			confirmed[vd.Finding.ID] = true
+		}
+	}
+	return bounty.RenderGate(eng.ID, bounty.Build(st.Findings(), confirmed))
 }
 
 // RenderSubmission renders the triaged, submission-grade Markdown report:

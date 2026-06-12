@@ -18,6 +18,7 @@ import (
 	"github.com/dukotah/tyto/internal/audit"
 	"github.com/dukotah/tyto/internal/engagement"
 	"github.com/dukotah/tyto/internal/guard"
+	"github.com/dukotah/tyto/internal/hunt"
 	"github.com/dukotah/tyto/internal/planner"
 	"github.com/dukotah/tyto/internal/state"
 	"github.com/dukotah/tyto/internal/tool"
@@ -71,6 +72,13 @@ type Options struct {
 	// block (e.g. awaiting a click in the web console). nil + RequireApproval =
 	// fail closed (deny). The error return propagates (e.g. ctx cancelled).
 	Approver func(ctx context.Context, a action.Action) (bool, error)
+	// HuntMode replaces the LLM planner with the deterministic, NO-LLM breadth-
+	// first payable-class sweep (internal/hunt) — the overnight bug-bounty engine
+	// that covers a whole wildcard scope on CPU without the per-cycle model tax.
+	// The Scope Guard still gates every emitted action.
+	HuntMode bool
+	// HuntMaxHosts bounds the hunt sweep's host fan-out (<= 0 = hunt's default).
+	HuntMaxHosts int
 }
 
 // Engine coordinates one engagement.
@@ -232,11 +240,31 @@ func (e *Engine) Run(ctx context.Context) error {
 		fmt.Fprintf(e.out, "\n── cycle %d/%d ──\n", c, cycles)
 		e.emit(Event{Kind: "cycle", Cycle: c})
 
-		// Signal that the planner (local model) is now thinking. On a slow CPU model
-		// this call can take a while; without this the live feed looks frozen between
-		// a cycle marker and the first action. The UI renders it as a "thinking" state.
-		e.emit(Event{Kind: "planning", Cycle: c, Message: "deciding the next actions…"})
-		actions, err := e.planner.Plan(ctx, e.eng, e.state, e.tools.Names(), e.scratch)
+		var actions []action.Action
+		var err error
+		if e.opts.HuntMode {
+			// Deterministic, NO-LLM sweep: hunt picks the next payable-class actions
+			// from the asset graph. e.seen is the done-set (canonical keys already
+			// dispatched), so the sweep advances and self-terminates (returns nil)
+			// when exhausted. Synthetic cap-notes are surfaced, not executed.
+			e.emit(Event{Kind: "planning", Cycle: c, Message: "sweeping (deterministic, no model)…"})
+			planned := hunt.Plan(e.state, e.eng.Scope, e.seen, hunt.Options{MaxHosts: e.opts.HuntMaxHosts})
+			for _, a := range planned {
+				if hunt.IsNote(a) {
+					fmt.Fprintf(e.out, "  NOTE  %s\n", a.Rationale)
+					e.emit(Event{Kind: "log", Message: a.Rationale})
+					e.seen[a.CanonicalKey()] = true // don't re-surface the note
+					continue
+				}
+				actions = append(actions, a)
+			}
+		} else {
+			// Signal that the planner (local model) is now thinking. On a slow CPU model
+			// this call can take a while; without this the live feed looks frozen between
+			// a cycle marker and the first action. The UI renders it as a "thinking" state.
+			e.emit(Event{Kind: "planning", Cycle: c, Message: "deciding the next actions…"})
+			actions, err = e.planner.Plan(ctx, e.eng, e.state, e.tools.Names(), e.scratch)
+		}
 		if err != nil {
 			e.emit(Event{Kind: "error", Cycle: c, Message: fmt.Sprintf("planner error: %v", err)})
 			return fmt.Errorf("cycle %d: %w", c, err)

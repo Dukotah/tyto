@@ -21,6 +21,7 @@ func newRootCmd() *cobra.Command {
 	root.SetVersionTemplate("tyto {{.Version}}\n")
 	root.AddCommand(
 		newRunCmd(),
+		newHuntCmd(),
 		newEngagementCmd(),
 		newAuthorizeCmd(),
 		newToolsCmd(),

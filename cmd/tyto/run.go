@@ -40,6 +40,10 @@ type runOptions struct {
 	resume       bool
 	statePath    string
 	db           string
+	// hunt runs the deterministic NO-LLM breadth-first payable-class sweep
+	// (engine HuntMode) instead of the model planner — the overnight bounty engine.
+	hunt         bool
+	huntMaxHosts int
 }
 
 func newRunCmd() *cobra.Command {
@@ -78,9 +82,14 @@ func (o *runOptions) run(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
+	// Hunt mode is deterministic and never calls the model, so default the report
+	// to the bounty gate and avoid requiring a live Ollama planner.
+	if o.hunt && o.reportFormat == "md" {
+		o.reportFormat = "bounty"
+	}
 	kind := o.plannerKind
 	if kind == "" {
-		if o.dryRun {
+		if o.dryRun || o.hunt {
 			kind = "mock"
 		} else {
 			kind = "ollama"
@@ -179,7 +188,8 @@ func (o *runOptions) run(cmd *cobra.Command, _ []string) error {
 		st,
 		alog,
 		out,
-		engine.Options{DryRun: o.dryRun, MaxCycles: o.cycles, PriorActionKeys: priorActions},
+		engine.Options{DryRun: o.dryRun, MaxCycles: o.cycles, PriorActionKeys: priorActions,
+			HuntMode: o.hunt, HuntMaxHosts: o.huntMaxHosts},
 	)
 
 	baseCtx := cmd.Context()
@@ -244,6 +254,14 @@ func emitReport(o *runOptions, eng *engagement.Engagement, st *state.State, sess
 		fetch := validate.NewHTTPFetcher()
 		fetch.Cookies = sessions // re-prove authenticated, per host, with the run's sessions
 		data = []byte(report.RenderSubmissionValidated(vctx, eng, st, fetch))
+	case "bounty":
+		// Payability-tiered bounty gate: payable classes (takeover/.git/secret/CVE)
+		// surface as actionable candidates; validation promotes any it can re-prove.
+		vctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		defer cancel()
+		fetch := validate.NewHTTPFetcher()
+		fetch.Cookies = sessions
+		data = []byte(report.RenderBountyValidated(vctx, eng, st, fetch))
 	case "json":
 		b, err := report.RenderJSON(eng, st)
 		if err != nil {
