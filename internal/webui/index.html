@@ -36,6 +36,7 @@
   .pill.running{color:var(--ok); border-color:rgba(55,194,107,.5); background:rgba(55,194,107,.1)}
   .pill.error{color:var(--high); border-color:rgba(255,122,51,.5); background:rgba(255,122,51,.1)}
   .pill.awaiting{color:var(--hold); border-color:rgba(255,176,32,.5); background:rgba(255,176,32,.1)}
+  .pill.statusdot{gap:0; padding:7px}  /* color-only status LED; text lives in the run bar */
   .dot{width:8px; height:8px; border-radius:50%; background:var(--muted)}
   .pill.running .dot,.pill.awaiting .dot{box-shadow:0 0 8px currentColor; background:currentColor; animation:pulse 1.2s infinite}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
@@ -78,6 +79,8 @@
   .runbar .rb-dot{width:9px; height:9px; border-radius:50%; background:var(--faint); flex-shrink:0}
   .runbar.on .rb-dot{background:var(--ok); box-shadow:0 0 9px var(--ok); animation:pulse 1.1s infinite}
   .runbar.done .rb-dot{background:var(--accent); box-shadow:0 0 9px var(--accent)}
+  .runbar.await .rb-dot{background:var(--hold); box-shadow:0 0 9px var(--hold); animation:pulse 1.1s infinite}
+  .runbar.err .rb-dot{background:var(--deny); box-shadow:0 0 9px var(--deny)}
   .runbar .rb-main{flex:1; min-width:0; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
   .runbar .rb-main b{color:var(--accent2); font-weight:700}
   .runbar .rb-el{font-family:var(--mono); color:var(--accent); margin-left:8px}
@@ -211,7 +214,7 @@
 <body class="">
 <header>
   <span class="brand"><span class="owl">🦉</span> tyto <small>operator console</small></span>
-  <span id="statusPill" class="pill"><span class="dot"></span><span id="statusText">idle</span></span>
+  <span id="statusPill" class="pill statusdot" title="status"><span class="dot"></span><span id="statusText"></span></span>
   <span class="engtag" id="engTag"><span class="muted">no engagement</span></span>
   <span class="spacer"></span>
   <button class="btn stop" id="stopBtn">■ Stop</button>
@@ -238,7 +241,7 @@
 
     <div class="runbar" id="runbar">
       <span class="rb-dot"></span>
-      <span class="rb-main" id="rbMain">Idle — no run in progress.</span>
+      <span class="rb-main" id="rbMain">Idle — connecting…</span>
       <span class="rb-count" id="rbCount"></span>
     </div>
 
@@ -246,7 +249,7 @@
       <div class="pane">
         <div class="h">
           <span class="t">⚡ Operation timeline</span>
-          <span class="live" id="liveInd"><span class="d"></span><span id="liveLbl">idle</span></span>
+          <span class="live" id="liveInd" title="stream"><span class="d"></span><span id="liveLbl"></span></span>
         </div>
         <div class="body"><div class="tl" id="feed"><div class="empty">Quiet for now. Ask tyto to assess a target and every step streams here — planning, scope decisions, tool runs, and findings.</div></div></div>
       </div>
@@ -294,13 +297,17 @@ async function getJSON(u){const r=await fetch(u,{headers:{Accept:"application/js
 const SEVS=["critical","high","medium","low","info"];
 const sevKey=(s)=>{const v=(s||"").toLowerCase(); return SEVS.includes(v)?v:"unknown";};
 function fmtTime(t){if(!t)return ""; const d=new Date(t); return isNaN(d.getTime())?String(t):d.toLocaleTimeString([],{hour12:false});}
-function setStatusPill(state,label){const p=$("statusPill"); p.className="pill "+(state||""); $("statusText").textContent=label||state||"idle";}
+// Header pill and pane indicator are now COLOR-ONLY dots — the single textual
+// status lives in the run bar (setRunBar). This avoids three widgets all saying
+// "idle". setStatusPill/setLive keep their signatures so callers don't change.
+function setStatusPill(state,label){const p=$("statusPill"); p.className="pill statusdot "+(state||""); p.title=label||state||"idle"; const t=$("statusText"); if(t)t.textContent="";}
 
 /* ====================================================================
    STATUS POLL → stat cards + pill
 ==================================================================== */
-let lastStatus=null, awaiting=false, maxCycle=0;
+let lastStatus=null, awaiting=false, maxCycle=0, offline=false, currentModel="";
 function renderStatus(s){s=s||{}; const b=s.bySeverity||{};
+  offline=false; if(s.model)currentModel=s.model;
   $("sFindings").textContent=s.findings|0; $("sAssets").textContent=s.assets|0;
   $("sCreds").textContent=s.credentials|0; $("sActions").textContent=s.actions|0;
   const bar=$("sevBar"); bar.textContent="";
@@ -319,7 +326,7 @@ function renderStatus(s){s=s||{}; const b=s.bySeverity||{};
   else {setStatusPill("","idle"); setLive(esActive,esActive?"connected":"idle");}
   setRunBar();
 }
-async function pollStatus(){try{const s=await getJSON("/api/status"); lastStatus=s; renderStatus(s);}catch(e){setStatusPill("error","offline");}}
+async function pollStatus(){try{const s=await getJSON("/api/status"); lastStatus=s; renderStatus(s);}catch(e){offline=true; setStatusPill("error","offline"); setLive(false,"offline"); setRunBar();}}
 
 /* ====================================================================
    LIVE TIMELINE (SSE /api/events)
@@ -329,22 +336,41 @@ let es=null, esActive=false, feedHas=false, lastEventAt=0, curCycle=null;
 let activeTool=null, actStarts={}, toolsRun=0, runDone=false, barTick=null, planning=false, planningSince=0, runStartTs=0;
 function rbKey(t,tg){return (t||"")+"|"+(tg||"");}
 function elapsed(ts){ if(!ts)return ""; const s=Math.floor((Date.now()-ts)/1000); if(s<60)return s+"s"; return Math.floor(s/60)+"m "+String(s%60).padStart(2,"0")+"s"; }
+// setRunBar is the ONE detailed status indicator — it states exactly what the
+// model/engine is doing right now (model name, phase, elapsed) and is the single
+// home for textual status. The header pill and pane LED are color-only mirrors.
+function mdl(){ return currentModel || "the model"; }
 function setRunBar(){
   const bar=$("runbar"), main=$("rbMain"), cnt=$("rbCount");
-  if(activeTool){
-    bar.className="runbar on"; const s=((Date.now()-activeTool.ts)/1000).toFixed(0);
-    main.textContent=""; main.appendChild(txt("Running ")); main.appendChild(el("b","",activeTool.tool));
+  main.textContent="";
+  if(offline){
+    bar.className="runbar err";
+    main.appendChild(txt("⚠ Console offline — can't reach tyto. Retrying…"));
+    cnt.textContent=""; return;
+  }
+  if(awaiting){
+    bar.className="runbar await";
+    main.appendChild(txt("⏸ Waiting for your approval — see the request in the timeline below."));
+  } else if(activeTool){
+    bar.className="runbar on";
+    main.appendChild(txt("▶ Running ")); main.appendChild(el("b","",activeTool.tool));
     if(activeTool.target)main.appendChild(txt(" on "+activeTool.target));
-    main.appendChild(el("span","rb-el",s+"s"));
+    main.appendChild(el("span","rb-el",elapsed(activeTool.ts)));
   } else if(planning || (lastStatus&&lastStatus.running)){
     bar.className="runbar on";
     const since=planningSince||runStartTs; const secs=since?Math.floor((Date.now()-since)/1000):0;
-    main.textContent=""; main.appendChild(txt("🧠 Thinking — the model is deciding the next actions…"));
+    main.appendChild(el("b","",mdl())); main.appendChild(txt(" is planning the next actions…"));
     if(since)main.appendChild(el("span","rb-el",elapsed(since)));
     if(secs>=15)main.appendChild(el("span","rb-hint","CPU planning is slow, still working…"));
+  } else if(runDone){
+    bar.className="runbar done";
+    main.appendChild(txt("✓ Run complete — engine finished, nothing running in the background."));
+  } else {
+    bar.className="runbar";
+    main.appendChild(txt(esActive?"Idle — connected, ":"Idle — "));
+    main.appendChild(el("b","",mdl()));
+    main.appendChild(txt(" ready. Ask tyto to assess a target."));
   }
-  else if(runDone){ bar.className="runbar done"; main.textContent="✓ Run complete — the engine finished. Nothing is running in the background."; }
-  else { bar.className="runbar"; main.textContent="Idle — no run in progress."; }
   let c=toolsRun?(toolsRun+" tool"+(toolsRun>1?"s":"")+" run"+(maxCycle?" · cycle "+maxCycle:"")):"";
   const tot=elapsed(runStartTs); if(tot&&!runDone)c+=(c?" · ":"")+tot+" elapsed";
   cnt.textContent=c;
@@ -361,7 +387,7 @@ function runSummary(){
   feedAppend(c);
 }
 function recentlyActive(){return Date.now()-lastEventAt < 8000;}
-function setLive(on,lbl){const i=$("liveInd"); i.classList.toggle("on",!!on); $("liveLbl").textContent=lbl||(on?"live":"idle");}
+function setLive(on,lbl){const i=$("liveInd"); i.classList.toggle("on",!!on); i.title=lbl||(on?"live":"idle"); const l=$("liveLbl"); if(l)l.textContent="";}
 function feedScroll(){const f=$("feed"); f.scrollTop=f.scrollHeight;}
 function clearEmpty(){const f=$("feed"); if(!feedHas){f.textContent=""; feedHas=true;}}
 // append into the current cycle group (or the feed root before any cycle starts)

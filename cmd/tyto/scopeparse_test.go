@@ -215,10 +215,10 @@ func TestBuildScopeEngagement_NoTargets(t *testing.T) {
 func TestScopeSummaryPreviewsAndDoesNotLaunch(t *testing.T) {
 	c := &console{}
 	eng, errMsg := c.buildScopeEngagement(extractedScope{
-		Program: "Acme",
-		InScope: []scopeEntry{{Type: "domain", Value: "*.example.com"}},
+		Program:    "Acme",
+		InScope:    []scopeEntry{{Type: "domain", Value: "*.example.com"}},
 		OutOfScope: []scopeEntry{{Type: "domain", Value: "admin.example.com"}},
-		Rules:   scopeRules{MaxRPS: 4},
+		Rules:      scopeRules{MaxRPS: 4},
 	})
 	if errMsg != "" {
 		t.Fatalf("build: %s", errMsg)

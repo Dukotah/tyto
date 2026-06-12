@@ -1119,11 +1119,13 @@ func chatContext(eng *engagement.Engagement, st *state.State) string {
 // --- read APIs -------------------------------------------------------------
 
 func (c *console) handleStatus(w http.ResponseWriter, _ *http.Request) {
+	model := c.resolveModel() // resolve BEFORE locking — resolveModel takes c.mu itself
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	resp := map[string]any{
 		"running": c.running, "engagement": nil, "findings": 0,
 		"bySeverity": map[string]int{}, "assets": 0, "actions": 0, "credentials": 0,
+		"model": model,
 	}
 	if c.eng != nil {
 		resp["engagement"] = map[string]string{"id": c.eng.ID, "client": c.eng.Client}
