@@ -99,6 +99,76 @@ func TestJSMineFetchFailureIsNotFatal(t *testing.T) {
 	}
 }
 
+// noisyServer ships a bundle laced with the exact minified-JS noise the live
+// copperbaytech run mis-mined: ternary-assignment "params" (n.href, M), bundler
+// internal paths (/ROOT/node_modules/...), and Next pseudo-routes (/_tree). A real
+// route (/about) and a real form param (email) sit alongside them and must survive.
+func noisyServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`<html><head><script src="/static/min.js"></script></head><body>hi</body></html>`))
+	})
+	mux.HandleFunc("/static/min.js", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/javascript")
+		_, _ = w.Write([]byte(`
+			e?n.href=t:0; var x=c?M=1:T=2; a.listener=f;
+			fetch("/ROOT/node_modules/next/dist/compiled/process/");
+			r("/_tree"); r("/_head");
+			const real = "/about";
+			fetch("/api/contact?email=1&name=2");
+		`))
+	})
+	return httptest.NewServer(mux)
+}
+
+func TestJSMineFiltersMinifiedNoise(t *testing.T) {
+	srv := noisyServer(t)
+	defer srv.Close()
+
+	res, err := New().Execute(context.Background(), action.Action{ID: "j3", Target: srv.URL})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	// Bundler internals and framework pseudo-routes must NOT become endpoints.
+	for _, junk := range []string{"node_modules", "/ROOT/", "/_tree", "/_head"} {
+		if has(res.Assets, junk) {
+			t.Errorf("noise path %q leaked into endpoints: %+v", junk, assetVals(res.Assets))
+		}
+	}
+	// The real route and the real param-bearing endpoint must survive.
+	if !has(res.Assets, "/about") {
+		t.Errorf("real route /about was dropped: %+v", assetVals(res.Assets))
+	}
+	if !has(res.Assets, "/api/contact") {
+		t.Errorf("real /api/contact endpoint was dropped: %+v", assetVals(res.Assets))
+	}
+	// Minified-identifier params (n.href, a.listener, lone-uppercase M/T) must be
+	// filtered; the real form params must remain.
+	for _, a := range res.Assets {
+		for _, bad := range []string{"n.href", "a.listener", "M=", "T="} {
+			if strings.Contains(a.Value, bad) {
+				t.Errorf("minified param %q leaked onto endpoint %q", bad, a.Value)
+			}
+		}
+	}
+	if !isPlausibleParam("email") || !isPlausibleParam("company_website") {
+		t.Error("real form params must be considered plausible")
+	}
+	if isPlausibleParam("a.listener") || isPlausibleParam("M") || isPlausibleParam("n.href") {
+		t.Error("minified identifiers must be rejected as params")
+	}
+}
+
+func assetVals(as []state.Asset) []string {
+	out := make([]string, len(as))
+	for i, a := range as {
+		out[i] = a.Value
+	}
+	return out
+}
+
 func titles(fs []state.Finding) []string {
 	out := make([]string, len(fs))
 	for i, f := range fs {

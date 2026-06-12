@@ -1,0 +1,21 @@
+id: exposed-composer-json
+info:
+  name: Exposed composer.json
+  severity: info
+  description: A composer.json manifest is publicly readable, disclosing PHP dependencies and their exact versions, useful for fingerprinting vulnerable packages.
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/composer.json"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        part: body
+        words: ["\"require\"", "\"name\"", "\"autoload\""]
+        condition: or
+      - type: word
+        part: header
+        words: ["application/json"]
+        condition: or

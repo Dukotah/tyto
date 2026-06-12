@@ -1,0 +1,20 @@
+id: exposed-ssh-private-key
+info:
+  name: Exposed SSH Private Key
+  severity: high
+  description: A private SSH/PEM key is publicly readable, granting direct credential access to associated hosts or services.
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/id_rsa"
+      - "{{BaseURL}}/.ssh/id_rsa"
+      - "{{BaseURL}}/private.key"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: regex
+        part: body
+        regex:
+          - "-----BEGIN (RSA |OPENSSH |EC |DSA )?PRIVATE KEY-----"
+        condition: or

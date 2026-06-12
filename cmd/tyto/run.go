@@ -21,6 +21,7 @@ import (
 	"github.com/dukotah/tyto/internal/state"
 	"github.com/dukotah/tyto/internal/store"
 	"github.com/dukotah/tyto/internal/sysinfo"
+	"github.com/dukotah/tyto/internal/validate"
 	"github.com/dukotah/tyto/pkg/version"
 )
 
@@ -234,7 +235,11 @@ func emitReport(o *runOptions, eng *engagement.Engagement, st *state.State, out 
 	case "md", "markdown":
 		data = []byte(report.Render(eng, st))
 	case "submission":
-		data = []byte(report.RenderSubmission(eng, st))
+		// Adversarially re-prove findings before they enter the submission body
+		// (refute-by-default); set-aside findings are retained as flagged noise.
+		vctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		defer cancel()
+		data = []byte(report.RenderSubmissionValidated(vctx, eng, st, validate.NewHTTPFetcher()))
 	case "json":
 		b, err := report.RenderJSON(eng, st)
 		if err != nil {

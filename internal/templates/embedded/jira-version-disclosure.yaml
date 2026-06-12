@@ -1,0 +1,16 @@
+id: atlassian-jira-version
+info:
+  name: Atlassian Jira Version Disclosure
+  severity: info
+  description: An Atlassian Jira instance discloses its exact build version via the server-info endpoint, enabling precise mapping to known CVEs.
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/rest/api/2/serverInfo"
+      - "{{BaseURL}}/secure/Dashboard.jspa"
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words: ["\"versionNumbers\"", "JIRA.Loader", "ajs-version-number"]
+        condition: or

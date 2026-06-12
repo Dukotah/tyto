@@ -1,0 +1,24 @@
+id: exposed-github-workflow
+info:
+  name: Exposed GitHub Actions Workflow
+  severity: info
+  description: A GitHub Actions workflow file under .github/workflows is publicly readable, disclosing CI/CD steps, runners, and referenced secret names.
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/.github/workflows/main.yml"
+      - "{{BaseURL}}/.github/workflows/ci.yml"
+      - "{{BaseURL}}/.github/workflows/deploy.yml"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: regex
+        part: body
+        regex:
+          - "(?im)^\\s*(on|jobs|runs-on|uses)\\s*:"
+        condition: or
+      - type: word
+        part: body
+        words: ["steps:", "actions/checkout"]
+        condition: or

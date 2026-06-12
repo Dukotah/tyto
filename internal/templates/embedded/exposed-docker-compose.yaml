@@ -1,0 +1,23 @@
+id: exposed-docker-compose
+info:
+  name: Exposed docker-compose.yml
+  severity: medium
+  description: A docker-compose file is publicly readable, disclosing service topology, image versions, and frequently environment secrets such as passwords.
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/docker-compose.yml"
+      - "{{BaseURL}}/docker-compose.yaml"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: regex
+        part: body
+        regex:
+          - "(?im)^\\s*(services|version)\\s*:"
+        condition: or
+      - type: word
+        part: body
+        words: ["image:", "build:", "container_name:"]
+        condition: or

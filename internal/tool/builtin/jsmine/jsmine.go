@@ -65,6 +65,49 @@ var paramRe = regexp.MustCompile(`[?&]([a-zA-Z_][a-zA-Z0-9_\-.]{0,40})=`)
 // staticExtRe flags non-testable static assets we drop from the path set.
 var staticExtRe = regexp.MustCompile(`(?i)\.(js|mjs|css|png|jpe?g|gif|svg|webp|ico|woff2?|ttf|eot|map|json|txt|xml|mp4|webm)(\?|$)`)
 
+// bundlerNoiseRe flags paths that are bundler/framework internals scraped out of a
+// minified webpack/Next bundle — NOT reachable application routes. Without this,
+// jsmine emits junk endpoints like /ROOT/node_modules/next/dist/compiled/process/.
+var bundlerNoiseRe = regexp.MustCompile(`(?i)(^|/)(node_modules|dist/compiled|webpack[-a-z0-9]*|\.next)(/|$)`)
+
+// isNoisyPath drops bundler internals and framework pseudo-routes. Next/React leak
+// internal segment names (_head, _index, _tree, _not-found) into the flight bundle;
+// those are not routes. The /_next/ static tree is the one legitimate exception.
+func isNoisyPath(p string) bool {
+	if p == "" {
+		return true
+	}
+	if bundlerNoiseRe.MatchString(p) || strings.Contains(p, "/ROOT/") || p == "/ROOT" {
+		return true
+	}
+	seg := strings.TrimPrefix(p, "/")
+	if i := strings.IndexByte(seg, '/'); i >= 0 {
+		seg = seg[:i]
+	}
+	if strings.HasPrefix(seg, "_") && seg != "_next" {
+		return true
+	}
+	return false
+}
+
+// isPlausibleParam rejects "parameters" that are really minified JavaScript, not
+// HTTP query names. The broad `?name=` scan over raw JS catches ternary assignments
+// (`e?n.href=t`) and minified identifiers (`M`, `T`, `a.listener`); because those
+// sort ahead of real lowercase names and the per-endpoint cap is small, they were
+// crowding the actual form params (business, email, …) out of the endpoint graph.
+func isPlausibleParam(name string) bool {
+	if name == "" || len(name) > 40 {
+		return false
+	}
+	if strings.ContainsAny(name, ".:/${}") { // property access / template literal / path
+		return false
+	}
+	if len(name) == 1 && name[0] >= 'A' && name[0] <= 'Z' { // lone uppercase = minified var
+		return false
+	}
+	return true
+}
+
 // secretPats are HIGH-PRECISION secret signatures (anchored, low false-positive)
 // so jsmine doesn't repeat the "report page chrome as a leak" failure mode. Each
 // has a severity and a human label.
@@ -128,7 +171,9 @@ func (t *Tool) Execute(ctx context.Context, a action.Action) (action.Result, err
 	for _, js := range blobs {
 		collectPaths(js, base, paths, paramURLs)
 		for _, pm := range paramRe.FindAllStringSubmatch(js, -1) {
-			params[pm[1]] = true
+			if isPlausibleParam(pm[1]) {
+				params[pm[1]] = true
+			}
 		}
 	}
 
@@ -221,12 +266,12 @@ func collectPaths(js string, base *url.URL, paths, paramURLs map[string]bool) {
 			return
 		}
 		if ref.RawQuery != "" {
-			if !staticExtRe.MatchString(ref.Path) {
+			if !staticExtRe.MatchString(ref.Path) && !isNoisyPath(ref.Path) {
 				paramURLs[ref.String()] = true
 			}
 			return
 		}
-		if ref.Path != "" && ref.Path != "/" && !staticExtRe.MatchString(ref.Path) {
+		if ref.Path != "" && ref.Path != "/" && !staticExtRe.MatchString(ref.Path) && !isNoisyPath(ref.Path) {
 			paths[ref.Path] = true
 		}
 	}
@@ -268,14 +313,14 @@ func sameHost(a, b *url.URL) bool {
 	return a != nil && b != nil && strings.EqualFold(a.Hostname(), b.Hostname())
 }
 
-func queryNames(u *url.URL) []string { return sortedKeys(setOf(u.Query())) }
-
-func setOf(q url.Values) map[string]bool {
+func queryNames(u *url.URL) []string {
 	m := map[string]bool{}
-	for k := range q {
-		m[k] = true
+	for k := range u.Query() {
+		if isPlausibleParam(k) {
+			m[k] = true
+		}
 	}
-	return m
+	return sortedKeys(m)
 }
 
 func sortedKeys(m map[string]bool) []string {

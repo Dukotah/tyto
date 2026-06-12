@@ -76,8 +76,15 @@ func TestSeedIPTargetSeedsHostOnly(t *testing.T) {
 	}
 }
 
-func TestSeedCIDRTargetSeedsNothing(t *testing.T) {
-	if got := toSeedAssets([]engagement.Target{{Type: engagement.TargetCIDR, Value: "10.0.0.0/24"}}); len(got) != 0 {
-		t.Fatalf("CIDR should seed nothing (let scanning expand it), got %+v", got)
+func TestSeedCIDRTargetSeedsCIDRAsset(t *testing.T) {
+	// A CIDR seeds a single `cidr` asset (NOT fabricated hosts) so the netsweep
+	// technique can do host discovery and emit the authoritative per-host assets.
+	got := toSeedAssets([]engagement.Target{{Type: engagement.TargetCIDR, Value: "10.0.0.0/24"}})
+	if len(got) != 1 || got[0].Type != "cidr" || got[0].Value != "10.0.0.0/24" {
+		t.Fatalf("CIDR should seed exactly one cidr asset, got %+v", got)
+	}
+	// And it must NOT fabricate host assets that may not exist.
+	if h := findSeed(got, "host", ""); h != nil {
+		t.Fatalf("CIDR must not fabricate host assets, got %+v", got)
 	}
 }

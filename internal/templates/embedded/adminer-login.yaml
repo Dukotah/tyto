@@ -1,0 +1,19 @@
+id: exposed-adminer-login
+info:
+  name: Exposed Adminer Database Login
+  severity: medium
+  description: An Adminer database-management login panel is publicly accessible, providing a direct interface to back-end databases if credentials are weak or known.
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/adminer.php"
+      - "{{BaseURL}}/adminer/"
+      - "{{BaseURL}}/adminer.php?username="
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        part: body
+        words: ["Login - Adminer", "Adminer <"]
+        condition: or

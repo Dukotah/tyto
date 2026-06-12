@@ -1,0 +1,18 @@
+id: exposed-travis-ci
+info:
+  name: Exposed .travis.yml
+  severity: info
+  description: A Travis CI configuration file is publicly readable, disclosing build environment, language runtime, and deployment steps.
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/.travis.yml"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: regex
+        part: body
+        regex:
+          - "(?im)^\\s*(language|script|install|deploy)\\s*:"
+        condition: or

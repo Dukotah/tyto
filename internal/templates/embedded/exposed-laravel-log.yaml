@@ -1,0 +1,18 @@
+id: exposed-laravel-log
+info:
+  name: Exposed Laravel Log File
+  severity: medium
+  description: The Laravel application log is publicly readable, disclosing stack traces, file paths, SQL queries, and sometimes secrets in error context.
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/storage/logs/laravel.log"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: regex
+        part: body
+        regex:
+          - "(?i)\\[\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\] (production|local|staging)\\.(ERROR|WARNING|INFO)"
+        condition: or

@@ -1,0 +1,18 @@
+id: spring-actuator-env
+info:
+  name: Spring Boot Actuator /env Exposure
+  severity: high
+  description: The Spring Boot Actuator /env endpoint is publicly accessible, disclosing the full application environment including system properties and configured secrets.
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/actuator/env"
+      - "{{BaseURL}}/env"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        part: body
+        words: ["activeProfiles", "propertySources"]
+        condition: and

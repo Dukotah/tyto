@@ -1,0 +1,19 @@
+id: spring-actuator-heapdump
+info:
+  name: Spring Boot Actuator Heap Dump Exposure
+  severity: high
+  description: The Spring Boot Actuator /heapdump endpoint is publicly accessible, returning a full JVM heap dump that can leak in-memory credentials, tokens, and session data.
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/actuator/heapdump"
+      - "{{BaseURL}}/heapdump"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: regex
+        part: body
+        regex:
+          - "^JAVA PROFILE 1\\.0"
+        condition: or

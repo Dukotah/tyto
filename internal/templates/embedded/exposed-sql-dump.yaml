@@ -1,0 +1,21 @@
+id: exposed-sql-dump
+info:
+  name: Exposed SQL Database Dump
+  severity: high
+  description: A SQL database dump is publicly readable, disclosing full table schemas and row data, often including credentials and personal data.
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/dump.sql"
+      - "{{BaseURL}}/backup.sql"
+      - "{{BaseURL}}/database.sql"
+      - "{{BaseURL}}/db.sql"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: regex
+        part: body
+        regex:
+          - "(?i)(CREATE TABLE|INSERT INTO|DROP TABLE IF EXISTS|MySQL dump)"
+        condition: or

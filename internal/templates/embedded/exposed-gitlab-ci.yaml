@@ -1,0 +1,18 @@
+id: exposed-gitlab-ci
+info:
+  name: Exposed .gitlab-ci.yml
+  severity: low
+  description: A GitLab CI pipeline definition is publicly readable, disclosing build/deploy stages, internal hosts, and sometimes credentials or registry paths.
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/.gitlab-ci.yml"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: regex
+        part: body
+        regex:
+          - "(?im)^\\s*(stages|script|image|before_script)\\s*:"
+        condition: or

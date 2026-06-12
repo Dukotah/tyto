@@ -89,8 +89,10 @@ func seedAssets(targets []engagement.Target) []state.Asset {
 		case engagement.TargetIP:
 			add(state.Asset{ID: "seed:host:" + v, Type: "host", Value: v})
 		case engagement.TargetCIDR:
-			// A range isn't a single host; leave expansion to active scanning so we
-			// don't fabricate hosts that may not exist.
+			// A range isn't a single host — don't fabricate hosts that may not exist.
+			// Emit a `cidr` asset instead, which the netsweep technique consumes to do
+			// host discovery and emit the authoritative per-host assets it finds.
+			add(state.Asset{ID: "seed:cidr:" + v, Type: "cidr", Value: v})
 		}
 	}
 	return assets

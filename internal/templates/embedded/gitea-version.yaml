@@ -1,0 +1,22 @@
+id: gitea-version-disclosure
+info:
+  name: Gitea Version Disclosure
+  severity: info
+  description: A Gitea instance discloses its exact version through the public API, enabling precise mapping to known vulnerabilities.
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/api/v1/version"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: regex
+        part: body
+        regex:
+          - "\\{\\s*\"version\"\\s*:\\s*\"[0-9]+\\.[0-9]+"
+        condition: or
+      - type: word
+        part: header
+        words: ["application/json"]
+        condition: or

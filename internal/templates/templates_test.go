@@ -54,6 +54,39 @@ func TestLoadEmbedded(t *testing.T) {
 	}
 }
 
+func TestEmbeddedTemplatesWellFormed(t *testing.T) {
+	tmpls, err := LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded: %v", err)
+	}
+	seen := make(map[string]bool, len(tmpls))
+	for _, tmpl := range tmpls {
+		if tmpl.ID == "" {
+			t.Errorf("template has empty ID: %+v", tmpl)
+			continue
+		}
+		if seen[tmpl.ID] {
+			t.Errorf("duplicate template ID %q", tmpl.ID)
+		}
+		seen[tmpl.ID] = true
+
+		if !ValidSeverity(tmpl.Info.Severity) {
+			t.Errorf("template %q has invalid severity %q", tmpl.ID, tmpl.Info.Severity)
+		}
+		if len(tmpl.Requests) == 0 {
+			t.Errorf("template %q has no requests", tmpl.ID)
+		}
+		for i, req := range tmpl.Requests {
+			if len(req.Path) == 0 {
+				t.Errorf("template %q request %d has no path", tmpl.ID, i)
+			}
+			if len(req.Matchers) == 0 {
+				t.Errorf("template %q request %d has no matchers", tmpl.ID, i)
+			}
+		}
+	}
+}
+
 func TestParseInlineExample(t *testing.T) {
 	tmpl, err := Parse([]byte(inlineExample))
 	if err != nil {

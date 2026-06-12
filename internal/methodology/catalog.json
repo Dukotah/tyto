@@ -1,6 +1,15 @@
 {
   "techniques": [
     {
+      "id": "cidr-host-discovery",
+      "name": "Host discovery sweep",
+      "phase": "scanning",
+      "category": "recon",
+      "tool": "netsweep",
+      "applies_to": {"asset_type": "cidr"},
+      "why": "expand an in-scope range and find live hosts so per-host enumeration can begin"
+    },
+    {
       "id": "host-port-scan",
       "name": "TCP service enumeration",
       "phase": "scanning",
@@ -208,6 +217,42 @@
       "why": "mine JavaScript bundles for hidden API routes, parameters, and secrets to expand the testable surface for injection"
     },
     {
+      "id": "http-spacrawl",
+      "name": "Headless SPA crawl / post-render attack surface",
+      "phase": "scanning",
+      "category": "recon",
+      "tool": "spacrawl",
+      "applies_to": {"service": "http"},
+      "why": "render JavaScript single-page apps in headless Chrome to discover links, forms, and XHR/fetch endpoints the static crawlers never see"
+    },
+    {
+      "id": "https-spacrawl",
+      "name": "Headless SPA crawl / post-render attack surface",
+      "phase": "scanning",
+      "category": "recon",
+      "tool": "spacrawl",
+      "applies_to": {"service": "https"},
+      "why": "render JavaScript single-page apps in headless Chrome to discover links, forms, and XHR/fetch endpoints the static crawlers never see"
+    },
+    {
+      "id": "http-oob",
+      "name": "Out-of-band injection probing (blind SSRF / RCE)",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "oobcheck",
+      "applies_to": {"service": "http"},
+      "why": "probe common SSRF parameters and headers for blind out-of-band vulnerabilities that produce no in-band response change"
+    },
+    {
+      "id": "https-oob",
+      "name": "Out-of-band injection probing (blind SSRF / RCE)",
+      "phase": "vuln-analysis",
+      "category": "scan",
+      "tool": "oobcheck",
+      "applies_to": {"service": "https"},
+      "why": "probe common SSRF parameters and headers for blind out-of-band vulnerabilities that produce no in-band response change"
+    },
+    {
       "id": "http-apidocs",
       "name": "Exposed API documentation",
       "phase": "vuln-analysis",
@@ -314,6 +359,15 @@
       "tool": "webinject",
       "applies_to": {"asset_type": "endpoint"},
       "why": "test a parameterized endpoint for XSS, SQL injection, path traversal, and command injection"
+    },
+    {
+      "id": "endpoint-oob",
+      "name": "Out-of-band injection (blind SSRF / RCE / OOB SQLi / blind XSS)",
+      "phase": "exploitation",
+      "category": "scan",
+      "tool": "oobcheck",
+      "applies_to": {"asset_type": "endpoint"},
+      "why": "catch blind vulnerabilities that leave no in-band response change by planting collaborator callbacks in the endpoint's parameters"
     },
     {
       "id": "endpoint-sqli-extract",

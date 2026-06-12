@@ -1,0 +1,17 @@
+id: exposed-grafana-login
+info:
+  name: Exposed Grafana Login
+  severity: low
+  description: A Grafana login interface is publicly accessible. Older versions are affected by known authentication-bypass and path-traversal CVEs, and default credentials are common.
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/login"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        part: body
+        words: ["grafanaBootData", "grafana-app"]
+        condition: or

@@ -81,6 +81,7 @@
   .runbar .rb-main{flex:1; min-width:0; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
   .runbar .rb-main b{color:var(--accent2); font-weight:700}
   .runbar .rb-el{font-family:var(--mono); color:var(--accent); margin-left:8px}
+  .runbar .rb-hint{color:var(--muted); font-style:italic; margin-left:10px; font-size:11.5px}
   .runbar .rb-count{font-family:var(--mono); color:var(--muted); flex-shrink:0; font-size:11.5px}
   .ev .dur{color:var(--faint); font-family:var(--mono); font-size:11px; margin-left:6px}
   .summary{margin:13px 4px 6px; padding:14px 16px; border:1px solid var(--accent); border-left:4px solid var(--accent);
@@ -219,6 +220,7 @@
     <option value="html">html</option><option value="sarif">sarif</option><option value="json">json</option>
   </select>
   <button class="btn" id="reportBtn">⬇ Report</button>
+  <button class="btn" id="clearBtn" title="Clear findings and activity (keeps the engagement)">⟲ Clear</button>
   <button class="btn primary" id="chatToggle">💬 Chat</button>
 </header>
 
@@ -324,8 +326,9 @@ async function pollStatus(){try{const s=await getJSON("/api/status"); lastStatus
 ==================================================================== */
 let es=null, esActive=false, feedHas=false, lastEventAt=0, curCycle=null;
 // run-bar / per-tool progress state
-let activeTool=null, actStarts={}, toolsRun=0, runDone=false, barTick=null, planning=false;
+let activeTool=null, actStarts={}, toolsRun=0, runDone=false, barTick=null, planning=false, planningSince=0, runStartTs=0;
 function rbKey(t,tg){return (t||"")+"|"+(tg||"");}
+function elapsed(ts){ if(!ts)return ""; const s=Math.floor((Date.now()-ts)/1000); if(s<60)return s+"s"; return Math.floor(s/60)+"m "+String(s%60).padStart(2,"0")+"s"; }
 function setRunBar(){
   const bar=$("runbar"), main=$("rbMain"), cnt=$("rbCount");
   if(activeTool){
@@ -333,13 +336,21 @@ function setRunBar(){
     main.textContent=""; main.appendChild(txt("Running ")); main.appendChild(el("b","",activeTool.tool));
     if(activeTool.target)main.appendChild(txt(" on "+activeTool.target));
     main.appendChild(el("span","rb-el",s+"s"));
-  } else if(planning || (lastStatus&&lastStatus.running)){ bar.className="runbar on"; main.textContent="🧠 Thinking — the model is deciding the next actions…"; }
+  } else if(planning || (lastStatus&&lastStatus.running)){
+    bar.className="runbar on";
+    const since=planningSince||runStartTs; const secs=since?Math.floor((Date.now()-since)/1000):0;
+    main.textContent=""; main.appendChild(txt("🧠 Thinking — the model is deciding the next actions…"));
+    if(since)main.appendChild(el("span","rb-el",elapsed(since)));
+    if(secs>=15)main.appendChild(el("span","rb-hint","CPU planning is slow, still working…"));
+  }
   else if(runDone){ bar.className="runbar done"; main.textContent="✓ Run complete — the engine finished. Nothing is running in the background."; }
   else { bar.className="runbar"; main.textContent="Idle — no run in progress."; }
-  cnt.textContent=toolsRun?(toolsRun+" tool"+(toolsRun>1?"s":"")+" run"+(maxCycle?" · cycle "+maxCycle:"")):"";
+  let c=toolsRun?(toolsRun+" tool"+(toolsRun>1?"s":"")+" run"+(maxCycle?" · cycle "+maxCycle:"")):"";
+  const tot=elapsed(runStartTs); if(tot&&!runDone)c+=(c?" · ":"")+tot+" elapsed";
+  cnt.textContent=c;
 }
-function startBarTick(){ if(barTick)return; barTick=setInterval(()=>{ if(activeTool)setRunBar(); else {clearInterval(barTick); barTick=null;} },500); }
-function resetRun(){ activeTool=null; planning=false; actStarts={}; toolsRun=0; runDone=false; maxCycle=0; $("sCycle").textContent="—"; if(barTick){clearInterval(barTick); barTick=null;} setRunBar(); }
+function startBarTick(){ if(barTick)return; barTick=setInterval(()=>{ if(activeTool||planning||(lastStatus&&lastStatus.running))setRunBar(); else {clearInterval(barTick); barTick=null;} },500); }
+function resetRun(){ activeTool=null; planning=false; planningSince=0; runStartTs=0; actStarts={}; toolsRun=0; runDone=false; maxCycle=0; $("sCycle").textContent="—"; if(barTick){clearInterval(barTick); barTick=null;} setRunBar(); }
 function runSummary(){
   const s=lastStatus||{}; const b=s.bySeverity||{};
   const c=el("div","summary"); c.appendChild(el("div","st","✓ Run complete"));
@@ -368,11 +379,12 @@ function renderEvent(ev){
   switch(ev.kind){
     case "cycle":{
       clearEmpty(); runDone=false;
+      if(!runStartTs)runStartTs=Date.now(); startBarTick();
       curCycle=el("div","cycgrp");
       const h=el("div","cyc"); h.appendChild(txt("cycle "+(ev.cycle!=null?ev.cycle:"")+(ev.message?"  ·  "+ev.message:"")));
       curCycle.appendChild(h); $("feed").appendChild(curCycle); feedScroll(); setRunBar(); break;}
     case "planning":{
-      planning=true; activeTool=null;
+      planning=true; activeTool=null; planningSince=Date.now(); if(!runStartTs)runStartTs=Date.now(); startBarTick();
       const {l,bd}=evRow("dim","~",tm); bd.appendChild(el("span","tool","planning")); bd.appendChild(txt("  the model is deciding the next actions…"));
       feedAppend(l); setRunBar(); break;}
     case "finding":{
@@ -401,12 +413,13 @@ function renderEvent(ev){
       const {l,bd}=evRow("muted","←",tm); bd.appendChild(el("span","tool",ev.tool||"result"));
       if(dur!=null)bd.appendChild(el("span","dur",dur.toFixed(1)+"s"));
       feedAppend(l);
-      if(ev.tool){toolsRun++; if(activeTool&&rbKey(activeTool.tool,activeTool.target)===k)activeTool=null; setRunBar();}
+      if(ev.tool){toolsRun++; if(activeTool&&rbKey(activeTool.tool,activeTool.target)===k){activeTool=null; planning=true; planningSince=Date.now(); startBarTick();} setRunBar();}
       if(m)outBlock(m); break;}
     case "log":{
       const m=ev.message||ev.reason||""; const {l,bd}=evRow("dim","·",tm);
       if(/^\s*\$\s/.test(m)){bd.appendChild(el("span","tool",ev.tool||"log")); feedAppend(l); outBlock(m);}
       else{bd.appendChild(txt(m||"log")); feedAppend(l);} break;}
+    case "cleared":{ resetDashboard(); sysnote("⟲ "+(ev.message||"Cleared.")); break;}
     default:{
       const p=[]; if(ev.tool)p.push(ev.tool); if(ev.target)p.push(ev.target); if(ev.verdict)p.push(ev.verdict);
       const m=ev.message||ev.reason||ev.title||""; const {l,bd}=evRow("dim","·",tm);
@@ -447,6 +460,18 @@ function openEvents(){
   es.onerror=()=>{setLive(false,"reconnecting…"); if(esActive)setTimeout(()=>{if(esActive)setLive(true,"connected");},1500);};
 }
 function afterRun(){scheduleFindings(); pollStatus();}
+
+// resetDashboard wipes the live run view back to its empty state. Triggered by
+// the "cleared" SSE event (which the server broadcasts after /api/clear), so
+// every open tab resets in sync — not just the one that clicked Clear.
+function resetDashboard(){
+  toolsRun=0; maxCycle=0; runStartTs=null; activeTool=null; planning=false; planningSince=null; curCycle=null; runDone=false;
+  const feed=$("feed"); feed.textContent="";
+  feed.appendChild(el("div","empty","Quiet for now. Ask tyto to assess a target and every step streams here — planning, scope decisions, tool runs, and findings."));
+  $("sCycle").textContent="—";
+  refreshFindings();   // re-reads /api/findings (now empty) and pollStatus() zeroes the stat cards
+  setRunBar();
+}
 
 /* ====================================================================
    FINDINGS PANEL (/api/findings)
@@ -558,6 +583,15 @@ $("stopBtn").addEventListener("click",async()=>{
     const d=await r.json().catch(()=>({})); if(!r.ok||d.error){sysnote("Stop failed: "+(d.error||("HTTP "+r.status))); return;}
     sysnote("■ Stop requested."); pollStatus();
   }catch(e){sysnote("Stop failed: "+e.message);}
+});
+$("clearBtn").addEventListener("click",async()=>{
+  if(!confirm("Clear all findings and the activity feed for this engagement? The on-disk audit log is kept."))return;
+  try{const r=await fetch("/api/clear",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({})});
+    const d=await r.json().catch(()=>({})); if(!r.ok||d.error){sysnote("Clear failed: "+(d.error||("HTTP "+r.status))); return;}
+    // The server broadcasts a "cleared" event that resets every open tab; reset
+    // locally too in case the SSE stream isn't currently connected.
+    resetDashboard();
+  }catch(e){sysnote("Clear failed: "+e.message);}
 });
 $("reportBtn").addEventListener("click",async()=>{
   const fmt=$("reportFormat").value||"md"; const b=$("reportBtn"); b.disabled=true;

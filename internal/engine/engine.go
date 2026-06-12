@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/dukotah/tyto/internal/action"
 	"github.com/dukotah/tyto/internal/audit"
 	"github.com/dukotah/tyto/internal/engagement"
@@ -20,6 +22,11 @@ import (
 	"github.com/dukotah/tyto/internal/state"
 	"github.com/dukotah/tyto/internal/tool"
 )
+
+// defaultMaxCycles is the iteration cap used when Options.MaxCycles <= 0. The
+// loop still terminates early on the no-progress contract or an empty plan, so a
+// generous default lets a productive run keep discovering without re-tuning.
+const defaultMaxCycles = 10
 
 // Event is a structured progress event emitted during a run, for live UIs
 // (the web console subscribes to these). Emitting is opt-in via Options.OnEvent;
@@ -42,7 +49,8 @@ type Event struct {
 type Options struct {
 	// DryRun plans and guards but never executes tools.
 	DryRun bool
-	// MaxCycles caps plan/act iterations. <= 0 means a single cycle.
+	// MaxCycles caps plan/act iterations. <= 0 means the default (10); the loop
+	// still terminates early on an empty plan or the no-progress contract.
 	MaxCycles int
 	// NoProgressCycleLimit halts the loop after this many consecutive cycles that
 	// discover nothing new and run no novel action. <= 0 means the default (3).
@@ -196,7 +204,7 @@ func (e *Engine) Run(ctx context.Context) error {
 
 	cycles := e.opts.MaxCycles
 	if cycles <= 0 {
-		cycles = 1
+		cycles = defaultMaxCycles
 	}
 	noProgressLimit := e.opts.NoProgressCycleLimit
 	if noProgressLimit <= 0 {
@@ -226,15 +234,9 @@ func (e *Engine) Run(ctx context.Context) error {
 			break
 		}
 
-		cycleProgress := false
-		for _, a := range actions {
-			progressed, err := e.handle(ctx, a)
-			if err != nil {
-				return err
-			}
-			if progressed {
-				cycleProgress = true
-			}
+		cycleProgress, err := e.runCycle(ctx, actions)
+		if err != nil {
+			return err
 		}
 
 		// Deterministic termination: a cycle that discovers nothing new and runs
@@ -262,19 +264,99 @@ func (e *Engine) Run(ctx context.Context) error {
 	return nil
 }
 
-// handle runs one action through the guard and (if allowed and not dry-run) the
-// tool, recording every step to the audit log. It reports whether the action
-// made progress (ran a novel action successfully, or discovered a new
-// asset/finding) so the caller can enforce the no-progress termination contract.
-// The error return is reserved for context cancellation during execution.
-func (e *Engine) handle(ctx context.Context, a action.Action) (bool, error) {
+// admitted carries an action that survived the serial ADMIT phase (deduped,
+// guard-allowed, approved, params injected) into the concurrent EXECUTE phase and
+// then the serial COMMIT phase. The slot index preserves planner order across the
+// concurrent fan-out so COMMIT applies results back in the original sequence.
+type admitted struct {
+	a    action.Action
+	tool tool.Tool
+	res  action.Result // filled by EXECUTE
+	err  error         // execution error (non-cancellation), surfaced in COMMIT
+}
+
+// runCycle drives one plan/act cycle through three phases:
+//
+//	ADMIT   (serial, planner order) — dedup, guard.Evaluate, decision audit, and
+//	          approval gating. All decision-side audit records and the e.seen
+//	          dedup happen here, in planner order, exactly as before.
+//	EXECUTE (concurrent) — admitted actions run via errgroup, each gated by the
+//	          throttle semaphore (so MaxConcurrent still caps in-flight work). Only
+//	          per-slot fields are touched, so no shared state races.
+//	COMMIT  (serial, planner order) — results fold into state/sessions/scratch and
+//	          the result-side audit, in the original planner order.
+//
+// It returns whether the cycle made progress, preserving the no-progress
+// termination contract exactly (a cycle is progress iff any committed action ran
+// a novel action successfully or discovered a new asset/finding/credential).
+func (e *Engine) runCycle(ctx context.Context, actions []action.Action) (bool, error) {
+	// ── ADMIT (serial, planner order) ───────────────────────────────────────────
+	admit := make([]*admitted, 0, len(actions))
+	for _, a := range actions {
+		ad, err := e.admit(ctx, a)
+		if err != nil {
+			return false, err
+		}
+		if ad != nil {
+			admit = append(admit, ad)
+		}
+	}
+
+	// ── EXECUTE (concurrent, throttle-gated) ────────────────────────────────────
+	// Each admitted action writes only its own slot (res/err); nothing shared is
+	// mutated here, so the fan-out is race-free. The throttle's semaphore enforces
+	// the RoE MaxConcurrent cap across all in-flight executions.
+	if len(admit) > 0 {
+		g, gctx := errgroup.WithContext(ctx)
+		for _, ad := range admit {
+			ad := ad
+			g.Go(func() error {
+				release, err := e.throttle.acquire(gctx, ad.a.Target)
+				if err != nil {
+					return err // context cancelled / deadline during pacing
+				}
+				defer release()
+				res, err := ad.tool.Execute(gctx, ad.a)
+				ad.res = res
+				ad.err = err
+				if err != nil && gctx.Err() != nil {
+					return gctx.Err() // cancellation aborts the whole cycle
+				}
+				return nil
+			})
+		}
+		if err := g.Wait(); err != nil {
+			return false, err
+		}
+	}
+
+	// ── COMMIT (serial, planner order) ──────────────────────────────────────────
+	cycleProgress := false
+	for _, ad := range admit {
+		progressed, err := e.commit(ad)
+		if err != nil {
+			return false, err
+		}
+		if progressed {
+			cycleProgress = true
+		}
+	}
+	return cycleProgress, nil
+}
+
+// admit runs one action through dedup + the guard + approval gating, all SERIAL
+// and in planner order. It returns a non-nil *admitted only for actions that must
+// proceed to concurrent execution; nil means the action was skipped/denied/held/
+// dry-run here (the decision audit and scratchpad were already recorded). The
+// error return is reserved for audit-write failures and a cancelled approver.
+func (e *Engine) admit(ctx context.Context, a action.Action) (*admitted, error) {
 	// Deduplicate first (cheapest check): an action we've already handled this run
 	// never re-executes, and counts as no progress. Dedup precedes the guard, so a
 	// previously-denied action also won't be retried.
 	key := a.CanonicalKey()
 	if e.seen[key] {
 		fmt.Fprintf(e.out, "  SKIP  %-12s %-22s — duplicate of an earlier action\n", a.Tool, a.Target)
-		return false, e.rec("duplicate_action_skipped", map[string]any{
+		return nil, e.rec("duplicate_action_skipped", map[string]any{
 			"action": a.ID, "tool": a.Tool, "target": a.Target, "key": key,
 		})
 	}
@@ -289,7 +371,7 @@ func (e *Engine) handle(ctx context.Context, a action.Action) (bool, error) {
 		"target": a.Target, "declared_risk": a.Risk.String(),
 		"verdict": dec.Verdict.String(), "allowed": dec.IsAllowed(), "reason": dec.Reason,
 	}); err != nil {
-		return false, err
+		return nil, err
 	}
 	e.emit(Event{Kind: "decision", Tool: a.Tool, Target: a.Target, Verdict: dec.Verdict.String(), Reason: dec.Reason})
 
@@ -297,13 +379,13 @@ func (e *Engine) handle(ctx context.Context, a action.Action) (bool, error) {
 	case guard.VerdictDeny:
 		fmt.Fprintf(e.out, "  DENY  %-12s %-22s — %s\n", a.Tool, a.Target, dec.Reason)
 		e.scratch.Record(planner.Attempt{Tool: a.Tool, Target: a.Target, Verdict: "deny", Reason: dec.Reason})
-		return false, nil
+		return nil, nil
 	case guard.VerdictRequireApproval:
 		// Human-approval UX lands in a later phase; until then, fail safe by not
 		// executing and recording that approval was required.
 		fmt.Fprintf(e.out, "  HOLD  %-12s %-22s — needs approval: %s\n", a.Tool, a.Target, dec.Reason)
 		e.scratch.Record(planner.Attempt{Tool: a.Tool, Target: a.Target, Verdict: "require_approval", Reason: dec.Reason})
-		return false, e.rec("approval_required", map[string]any{
+		return nil, e.rec("approval_required", map[string]any{
 			"action": a.ID, "tool": a.Tool, "target": a.Target, "reason": dec.Reason,
 		})
 	}
@@ -311,20 +393,22 @@ func (e *Engine) handle(ctx context.Context, a action.Action) (bool, error) {
 
 	if e.opts.DryRun {
 		fmt.Fprintf(e.out, "  ALLOW %-12s %-22s [dry-run] %s\n", a.Tool, a.Target, a.Rationale)
-		return false, nil
+		return nil, nil
 	}
 
 	t, ok := e.tools.Get(a.Tool)
 	if !ok {
 		fmt.Fprintf(e.out, "  SKIP  %-12s %-22s — no such tool registered\n", a.Tool, a.Target)
-		return false, e.rec("result", map[string]any{"action": a.ID, "skipped": "unknown tool"})
+		return nil, e.rec("result", map[string]any{"action": a.ID, "skipped": "unknown tool"})
 	}
 
 	// Human-in-the-loop: a high-impact action (exploit/identity tool or RiskHigh)
 	// pauses for explicit operator approval when RequireApproval is on. In addition,
 	// a tool may FORCE approval for a specific action via ApprovalGater (the kali
 	// arsenal tool does this for any non-read-only command) — so arbitrary commands
-	// always wait for an operator click regardless of the global setting.
+	// always wait for an operator click regardless of the global setting. Approval
+	// is serial (it may block on an operator) and mutates the audit, so it stays in
+	// ADMIT, before the concurrent execute phase.
 	forceApproval := false
 	if g, ok := t.(tool.ApprovalGater); ok {
 		forceApproval = g.NeedsApproval(a.Params)
@@ -336,19 +420,19 @@ func (e *Engine) handle(ctx context.Context, a action.Action) (bool, error) {
 			fmt.Fprintf(e.out, "  WAIT  %-12s %-22s — awaiting approval\n", a.Tool, a.Target)
 			approved, aerr = e.opts.Approver(ctx, a)
 			if aerr != nil {
-				return false, aerr
+				return nil, aerr
 			}
 		}
 		if rerr := e.audit.RecordApproval(audit.Approval{
 			Approver: "operator", ActionID: a.ID,
 			GuardReason: fmt.Sprintf("high-impact %s/%s", t.Category(), t.MaxRisk()), Approved: approved,
 		}); rerr != nil {
-			return false, rerr
+			return nil, rerr
 		}
 		if !approved {
 			fmt.Fprintf(e.out, "  DENY  %-12s %-22s — operator declined\n", a.Tool, a.Target)
 			e.emit(Event{Kind: "decision", Action: a.ID, Tool: a.Tool, Target: a.Target, Verdict: "denied", Reason: "operator declined"})
-			return false, nil
+			return nil, nil
 		}
 		fmt.Fprintf(e.out, "  OK    %-12s %-22s — operator approved\n", a.Tool, a.Target)
 	}
@@ -356,19 +440,13 @@ func (e *Engine) handle(ctx context.Context, a action.Action) (bool, error) {
 	if err := e.rec("action", map[string]any{
 		"action": a.ID, "tool": a.Tool, "target": a.Target, "params": a.Params,
 	}); err != nil {
-		return false, err
+		return nil, err
 	}
-
-	// Enforce RoE pacing (per-target rate + global concurrency) right before the
-	// tool touches the target. A cancelled context here aborts without executing.
-	release, err := e.throttle.acquire(ctx, a.Target)
-	if err != nil {
-		return false, err
-	}
-	defer release()
 
 	// Inject any established session for this target's host so the tool runs
 	// authenticated (tools that support it attach a.Cookie to their requests).
+	// Sessions are read here in ADMIT (serial) and written back in COMMIT (serial),
+	// so the e.sessions map is never touched from a concurrent goroutine.
 	if c := e.sessions[engagementHost(a.Target)]; c != "" {
 		a.Cookie = c
 	}
@@ -405,12 +483,19 @@ func (e *Engine) handle(ctx context.Context, a action.Action) (bool, error) {
 		}
 	}
 
-	res, err := t.Execute(ctx, a)
-	if err != nil {
-		fmt.Fprintf(e.out, "  ERROR %-12s %-22s — %v\n", a.Tool, a.Target, err)
-		if ctx.Err() != nil {
-			return false, ctx.Err()
-		}
+	return &admitted{a: a, tool: t}, nil
+}
+
+// commit folds one executed action's result back into shared state, in the
+// SERIAL COMMIT phase and in original planner order: state mutations, session
+// capture, the scratchpad note, and the result-side audit all happen here so
+// their ordering is deterministic regardless of how EXECUTE interleaved. It
+// reports whether the action made progress (novel success, or a new asset/
+// finding/credential) for the no-progress termination contract.
+func (e *Engine) commit(ad *admitted) (bool, error) {
+	a, res := ad.a, ad.res
+	if ad.err != nil {
+		fmt.Fprintf(e.out, "  ERROR %-12s %-22s — %v\n", a.Tool, a.Target, ad.err)
 	}
 	newFinding := false
 	for _, f := range res.Findings {

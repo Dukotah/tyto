@@ -1,0 +1,20 @@
+id: exposed-jenkins-panel
+info:
+  name: Exposed Jenkins Dashboard
+  severity: medium
+  description: A Jenkins CI dashboard is publicly accessible, which may allow anonymous build inspection or job execution depending on its security configuration.
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/"
+      - "{{BaseURL}}/login"
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: header
+        words: ["X-Jenkins:", "X-Jenkins-Session:"]
+        condition: or
+      - type: word
+        part: body
+        words: ["Dashboard [Jenkins]", "jenkins-banner", "Welcome to Jenkins!"]
+        condition: or

@@ -1,6 +1,7 @@
 package report
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"github.com/dukotah/tyto/internal/engagement"
 	"github.com/dukotah/tyto/internal/state"
 	"github.com/dukotah/tyto/internal/triage"
+	"github.com/dukotah/tyto/internal/validate"
 )
 
 // Submission is the triaged, submission-grade projection of an engagement: the
@@ -99,12 +101,99 @@ func BuildSubmission(eng *engagement.Engagement, st *state.State) Submission {
 	return s
 }
 
+// BuildSubmissionValidated is the adversarial, refute-by-default variant of
+// BuildSubmission. Before triage, every raw finding is re-proved against the
+// live target through the validation brain (internal/validate): only findings
+// it can actively re-observe RIGHT NOW reach the actionable body. Findings it
+// refutes or cannot re-prove (inconclusive) are NOT dropped — they are retained
+// in the Noise bucket, tagged with the re-verification reason, so the operator
+// reviews them before discarding (autonomous-scanner noise gets you banned, not
+// paid). This is the form to submit to a bug-bounty program.
+//
+// The fetch seam is injected so this is testable; production passes
+// validate.NewHTTPFetcher(). Pass a context with a deadline — re-proof makes
+// live requests. NOTE: if a finding was only observable while authenticated,
+// set the fetcher's session cookie at the call site, else the unauthenticated
+// re-proof will refute it (it is still retained as noise, never silently lost).
+func BuildSubmissionValidated(ctx context.Context, eng *engagement.Engagement, st *state.State, fetch validate.Fetcher) Submission {
+	verdicts := validate.New(fetch).ValidateAll(ctx, st.Findings())
+	confirmed, refuted, inconclusive := validate.Partition(verdicts)
+
+	// Actionable body is built ONLY from re-proved findings (Validated forced
+	// true, with the live re-proof appended to the evidence).
+	res := triage.Triage(validate.Confirmed(verdicts))
+	s := Submission{EngagementID: eng.ID, Client: eng.Client}
+	for _, g := range res.Actionable {
+		s.Actionable = append(s.Actionable, groupToFinding(g))
+	}
+	for _, g := range res.Noise {
+		s.Noise = append(s.Noise, groupToFinding(g))
+	}
+	// Retain everything the validator set aside, tagged with why — never drop.
+	for _, vd := range refuted {
+		s.Noise = append(s.Noise, verdictToNoise(vd, "refuted on re-verification"))
+	}
+	for _, vd := range inconclusive {
+		s.Noise = append(s.Noise, verdictToNoise(vd, "could not be actively re-proved"))
+	}
+	_ = confirmed // confirmed flows through validate.Confirmed above; named for clarity
+	return s
+}
+
+// verdictToNoise projects a set-aside verdict (refuted / inconclusive) into a
+// noise-tagged SubmissionFinding so it is retained and reviewable, never
+// silently swallowed by the validation gate.
+func verdictToNoise(vd validate.Verdict, why string) SubmissionFinding {
+	f := vd.Finding
+	desc := f.Description
+	note := fmt.Sprintf("validation: %s (%s)", why, vd.Reason)
+	if desc == "" {
+		desc = note
+	} else {
+		desc = desc + " | " + note
+	}
+	sf := SubmissionFinding{
+		Title:       f.Title,
+		Severity:    f.Severity.String(),
+		Tool:        f.Tool,
+		Validated:   false,
+		Targets:     []string{f.Target},
+		Description: desc,
+		Impact:      f.Impact,
+		Repro:       f.Repro,
+		Noise:       true,
+	}
+	if f.CVSS != "" {
+		if score, err := cvss.BaseScore(f.CVSS); err == nil {
+			sf.CVSS = score
+			sf.CVSSVector = f.CVSS
+		}
+	}
+	if f.Evidence != "" {
+		sf.Evidence = append(sf.Evidence, TargetEvidence{Target: f.Target, Evidence: f.Evidence, Validated: false})
+	}
+	return sf
+}
+
+// RenderSubmissionValidated renders the adversarially-validated submission
+// report: only re-proved findings appear as actionable; everything the
+// validator set aside is retained, tagged, under "flagged as noise".
+func RenderSubmissionValidated(ctx context.Context, eng *engagement.Engagement, st *state.State, fetch validate.Fetcher) string {
+	return renderSubmission(BuildSubmissionValidated(ctx, eng, st, fetch))
+}
+
 // RenderSubmission renders the triaged, submission-grade Markdown report:
 // actionable issues first (deduped across hosts, with impact/repro/evidence),
 // then a clearly-labelled list of flagged noise that was set aside but not
 // dropped.
 func RenderSubmission(eng *engagement.Engagement, st *state.State) string {
-	s := BuildSubmission(eng, st)
+	return renderSubmission(BuildSubmission(eng, st))
+}
+
+// renderSubmission renders a prepared Submission to Markdown. Shared by the
+// plain (RenderSubmission) and adversarially-validated (RenderSubmissionValidated)
+// entry points so both produce identical formatting.
+func renderSubmission(s Submission) string {
 	var b strings.Builder
 
 	fmt.Fprintf(&b, "# Submission report — %s\n\n", s.EngagementID)

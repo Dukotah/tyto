@@ -24,6 +24,11 @@ coverage.*
 # Local model / cache
 .ollama/
 
+# Transient server / setup logs (runtime artifacts)
+serve-out.log
+serve-err.log
+wsl-setup.log
+
 # Editor / OS
 .idea/
 .vscode/

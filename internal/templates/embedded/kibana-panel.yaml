@@ -1,0 +1,16 @@
+id: exposed-kibana-panel
+info:
+  name: Exposed Kibana Dashboard
+  severity: medium
+  description: A Kibana interface is publicly accessible, potentially exposing Elasticsearch-indexed log and application data without authentication.
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/app/kibana"
+      - "{{BaseURL}}/api/status"
+    matchers-condition: and
+    matchers:
+      - type: word
+        part: body
+        words: ["kbn-injected-metadata", "kibanaVersion", "\"name\":\"kibana\""]
+        condition: or

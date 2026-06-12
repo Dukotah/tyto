@@ -1,0 +1,17 @@
+id: exposed-vscode-sftp
+info:
+  name: Exposed .vscode/sftp.json
+  severity: high
+  description: A VS Code SFTP configuration is publicly readable, frequently disclosing deployment host, username, and password or private-key path.
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/.vscode/sftp.json"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        part: body
+        words: ["\"host\"", "\"username\"", "\"remotePath\""]
+        condition: and

@@ -29,14 +29,17 @@ import (
 	"github.com/dukotah/tyto/internal/tool/builtin/ldapenum"
 	"github.com/dukotah/tyto/internal/tool/builtin/login"
 	"github.com/dukotah/tyto/internal/tool/builtin/metasploit"
+	"github.com/dukotah/tyto/internal/tool/builtin/netsweep"
 	"github.com/dukotah/tyto/internal/tool/builtin/niktoadapter"
 	"github.com/dukotah/tyto/internal/tool/builtin/nmapscan"
 	"github.com/dukotah/tyto/internal/tool/builtin/nucleiscan"
+	"github.com/dukotah/tyto/internal/tool/builtin/oobcheck"
 	"github.com/dukotah/tyto/internal/tool/builtin/portscan"
 	"github.com/dukotah/tyto/internal/tool/builtin/redircheck"
 	"github.com/dukotah/tyto/internal/tool/builtin/secretscan"
 	"github.com/dukotah/tyto/internal/tool/builtin/shell"
 	"github.com/dukotah/tyto/internal/tool/builtin/smbenum"
+	"github.com/dukotah/tyto/internal/tool/builtin/spacrawl"
 	"github.com/dukotah/tyto/internal/tool/builtin/sqliexploit"
 	"github.com/dukotah/tyto/internal/tool/builtin/sqlmapadapter"
 	"github.com/dukotah/tyto/internal/tool/builtin/sshcheck"
@@ -46,6 +49,7 @@ import (
 	"github.com/dukotah/tyto/internal/tool/builtin/templatescan"
 	"github.com/dukotah/tyto/internal/tool/builtin/testssladapter"
 	"github.com/dukotah/tyto/internal/tool/builtin/tlscheck"
+	"github.com/dukotah/tyto/internal/tool/builtin/trivyscan"
 	"github.com/dukotah/tyto/internal/tool/builtin/wafdetect"
 	"github.com/dukotah/tyto/internal/tool/builtin/webcheck"
 	"github.com/dukotah/tyto/internal/tool/builtin/webcrawl"
@@ -59,6 +63,9 @@ import (
 func defaultRegistry() *tool.Registry {
 	r := tool.NewRegistry()
 	r.MustRegister(portscan.New())
+	// Host discovery across a CIDR → live `host` assets, the missing first step that
+	// lets a bare range target ("10.0.0.0/24") drive per-host enumeration.
+	r.MustRegister(netsweep.New())
 	r.MustRegister(httpprobe.New())
 	r.MustRegister(webcheck.New())
 	r.MustRegister(webdiscover.New())
@@ -81,10 +88,23 @@ func defaultRegistry() *tool.Registry {
 	r.MustRegister(wafdetect.New())
 	r.MustRegister(subtakeover.New())
 	r.MustRegister(templatescan.New())
+	// Headless-browser SPA crawler: renders JS apps to surface links/forms/XHR
+	// endpoints the static crawlers miss. Graceful-degrades (honest info finding)
+	// where no Chromium binary is installed.
+	r.MustRegister(spacrawl.New())
+	// Trivy dependency/container/filesystem CVE scanner (shell-out, routed through
+	// the Kali backend). Registered for on-demand image/repo/fs scans; no auto-fire
+	// methodology node since web recon does not emit image/repo assets. Graceful-
+	// degrades when trivy is not installed.
+	r.MustRegister(trivyscan.New())
 	r.MustRegister(jwtcheck.New())
 	r.MustRegister(cvematch.New())
 	r.MustRegister(dirfuzz.New())
 	r.MustRegister(ssti.New())
+	// Out-of-band collaborator probe: catches BLIND vulns (SSRF/RCE/OOB-SQLi/blind
+	// XSS) that leave no in-band response change. Resolves the process-wide oob
+	// listener lazily on first Execute, so registering/listing it binds no ports.
+	r.MustRegister(oobcheck.New())
 	// Exploitation tier (exploit-category, RiskHigh) — the Scope Guard only lets
 	// these run with a verified authorization grant for the target.
 	r.MustRegister(cmdexec.New())

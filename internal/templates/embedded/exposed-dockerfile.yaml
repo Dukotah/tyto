@@ -1,0 +1,18 @@
+id: exposed-dockerfile
+info:
+  name: Exposed Dockerfile
+  severity: low
+  description: A Dockerfile is publicly readable, disclosing base images, build steps, and sometimes embedded secrets or internal paths.
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/Dockerfile"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: regex
+        part: body
+        regex:
+          - "(?im)^\\s*FROM\\s+\\S+"
+        condition: or

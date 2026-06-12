@@ -1,0 +1,17 @@
+id: exposed-composer-lock
+info:
+  name: Exposed composer.lock
+  severity: info
+  description: A composer.lock file is publicly readable, disclosing the exact pinned versions of every PHP dependency, useful for identifying known-vulnerable packages.
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/composer.lock"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        part: body
+        words: ["\"_readme\"", "\"content-hash\"", "\"packages\""]
+        condition: or

@@ -37,6 +37,7 @@ import (
 	"github.com/dukotah/tyto/internal/sysinfo"
 	"github.com/dukotah/tyto/internal/tool/adapter"
 	"github.com/dukotah/tyto/internal/tool/builtin/shell"
+	"github.com/dukotah/tyto/internal/validate"
 	"github.com/dukotah/tyto/internal/webui"
 )
 
@@ -178,6 +179,7 @@ func newServeCmd() *cobra.Command {
 			mux.HandleFunc("/api/methodology", c.handleMethodology)
 			mux.HandleFunc("/api/run", c.handleRun)
 			mux.HandleFunc("/api/stop", c.handleStop)
+		mux.HandleFunc("/api/clear", c.handleClear)
 			mux.HandleFunc("/api/approve", c.handleApprove)
 			mux.HandleFunc("/api/chat", c.handleChat)
 			mux.HandleFunc("/api/events", c.handleEvents)
@@ -500,6 +502,33 @@ func (c *console) handleStop(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"ok": false, "error": "no run in progress"})
 }
 
+// handleClear resets the live engagement view to a clean slate: findings,
+// assets, credentials, the activity feed, and the in-memory audit buffer are
+// all dropped so the operator can start fresh without restarting the server.
+// It refuses while a run is in progress (clearing mid-run would race the
+// engine's state writes and orphan the audit trail) — stop the run first. The
+// engagement selection itself is preserved; only the run's accumulated results
+// are cleared. The persisted audit log on disk is untouched.
+func (c *console) handleClear(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	c.mu.Lock()
+	if c.running {
+		c.mu.Unlock()
+		writeJSON(w, map[string]any{"ok": false, "error": "a run is in progress — stop it before clearing"})
+		return
+	}
+	c.st = state.New()
+	c.history = nil
+	c.auditBuf = &safeBuffer{}
+	c.mu.Unlock()
+
+	c.broadcast(engine.Event{Kind: "cleared", Message: "findings and activity cleared", Time: time.Now().UTC()})
+	writeJSON(w, map[string]any{"ok": true})
+}
+
 // handleChat is an engagement-aware assistant: the operator can ask about
 // findings and next steps in plain language. It feeds the LOCAL model a safe
 // projection of the live engagement state (finding titles/severities/targets +
@@ -708,7 +737,7 @@ func (c *console) handleChat(w http.ResponseWriter, r *http.Request) {
 		"'go after that box'. Put the target in 'target'. For 'depth': DEFAULT TO 'scan' (the useful " +
 		"default that actually finds vulnerabilities) unless they explicitly ask for passive/recon-only " +
 		"('recon'), AD/identity depth ('internal'), or exploitation to confirm findings ('full' — they say " +
-			"'exploit', 'pop it', 'get a shell', 'go all the way'). I set up an authorized engagement and run the " +
+		"'exploit', 'pop it', 'get a shell', 'go all the way'). I set up an authorized engagement and run the " +
 		"autonomous guarded pentest in Kali — USE THIS EVEN IF NO ENGAGEMENT IS LOADED.\n" +
 		"mode='shell': execute ONE specific command on the Kali box tyto runs on (its own toolbox) and show " +
 		"the output — 'run uname -a', 'is rockyou here', 'what version is nmap', 'show me this file'. Put the " +
@@ -1572,7 +1601,14 @@ func (c *console) handleReport(w http.ResponseWriter, r *http.Request) {
 	case "md", "markdown":
 		body, contentType, ext = []byte(report.Render(eng, st)), "text/markdown; charset=utf-8", "md"
 	case "submission":
-		body, contentType, ext = []byte(report.RenderSubmission(eng, st)), "text/markdown; charset=utf-8", "md"
+		// The submission report is what gets sent to a bug-bounty program, so it
+		// runs through the adversarial validation brain: only findings re-proved
+		// live reach the actionable body; refuted/inconclusive are retained as
+		// flagged noise. Bound the live re-proof so a slow target can't hang the
+		// download.
+		vctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+		defer cancel()
+		body, contentType, ext = []byte(report.RenderSubmissionValidated(vctx, eng, st, validate.NewHTTPFetcher())), "text/markdown; charset=utf-8", "md"
 	case "html":
 		body, err = report.RenderHTML(eng, st)
 		contentType, ext = "text/html; charset=utf-8", "html"

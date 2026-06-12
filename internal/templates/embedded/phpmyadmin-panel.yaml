@@ -1,0 +1,19 @@
+id: exposed-phpmyadmin-panel
+info:
+  name: Exposed phpMyAdmin Panel
+  severity: medium
+  description: A phpMyAdmin login interface is publicly accessible, providing direct administrative access to MySQL/MariaDB databases if credentials are weak or default.
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/phpmyadmin/"
+      - "{{BaseURL}}/pma/"
+      - "{{BaseURL}}/phpMyAdmin/"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        part: body
+        words: ["pmahomme", "phpMyAdmin", "pma_username"]
+        condition: or

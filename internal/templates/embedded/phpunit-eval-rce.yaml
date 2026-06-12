@@ -1,0 +1,18 @@
+id: phpunit-eval-stdin-exposed
+info:
+  name: Exposed PHPUnit eval-stdin.php (CVE-2017-9841)
+  severity: high
+  description: The PHPUnit eval-stdin.php test helper is reachable on the web root. This file (CVE-2017-9841) executes PHP from the request body and is a well-known remote code execution vector when left deployed.
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php"
+      - "{{BaseURL}}/vendor/phpunit/src/Util/PHP/eval-stdin.php"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        part: body
+        words: ["eval-stdin.php", "<?php"]
+        condition: or
