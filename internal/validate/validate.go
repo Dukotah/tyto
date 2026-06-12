@@ -55,20 +55,21 @@ const (
 type Class string
 
 const (
-	ClassReflectedXSS   Class = "reflected-xss"
-	ClassErrorSQLi      Class = "error-sqli"
-	ClassMissingHeader  Class = "missing-security-header"
-	ClassExposedSecret  Class = "exposed-secret"
-	ClassUnknown        Class = "unknown"
+	ClassReflectedXSS      Class = "reflected-xss"
+	ClassErrorSQLi         Class = "error-sqli"
+	ClassMissingHeader     Class = "missing-security-header"
+	ClassExposedSecret     Class = "exposed-secret"
+	ClassSubdomainTakeover Class = "subdomain-takeover"
+	ClassUnknown           Class = "unknown"
 )
 
 // Response is the minimal view of an HTTP response the re-verifiers need. It
 // deliberately avoids *http.Response so a fake Fetcher is trivial to build in
 // tests with no network and no live server.
 type Response struct {
-	Status  int
-	Header  http.Header
-	Body    string
+	Status int
+	Header http.Header
+	Body   string
 }
 
 // Fetcher performs an HTTP GET against rawURL and returns the response. It is
@@ -207,6 +208,7 @@ func Classify(f state.Finding) Class {
 		errorSQLiVerifier{},
 		missingHeaderVerifier{},
 		exposedSecretVerifier{},
+		newSubTakeoverVerifier(),
 	} {
 		if ver.handles(f) {
 			return ver.class()

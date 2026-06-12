@@ -8,7 +8,52 @@ import (
 	"strings"
 
 	"github.com/dukotah/tyto/internal/state"
+	"github.com/dukotah/tyto/internal/takeover"
 )
+
+// ---- subdomain takeover ---------------------------------------------------
+
+// subTakeoverVerifier re-proves a subdomain-takeover finding through the shared,
+// double-gated takeover engine: it confirms ONLY when the host's CNAME resolves
+// under a fingerprinted provider AND an independent unclaimed signal holds (the
+// verbatim unclaimed-page string, or a definitive NXDOMAIN on the CNAME target).
+// A claimed page, or a host that no longer dangles, is refuted — so a stale or
+// already-fixed takeover candidate never reaches the submit body.
+type subTakeoverVerifier struct{ eng *takeover.Engine }
+
+func newSubTakeoverVerifier() subTakeoverVerifier {
+	return subTakeoverVerifier{eng: takeover.New(takeover.NewNetResolver(), takeover.NewHTTPFetcher())}
+}
+
+func (subTakeoverVerifier) class() Class { return ClassSubdomainTakeover }
+
+func (subTakeoverVerifier) handles(f state.Finding) bool {
+	return containsFold(f.Title, "subdomain takeover") || containsFold(f.Title, "subdomain-takeover") ||
+		(containsFold(f.Title, "takeover") && containsFold(f.Title+" "+f.Description, "subdomain"))
+}
+
+func (v subTakeoverVerifier) verify(ctx context.Context, _ Fetcher, f state.Finding) Verdict {
+	eng := v.eng
+	if eng == nil {
+		eng = takeover.New(takeover.NewNetResolver(), takeover.NewHTTPFetcher())
+	}
+	vd := Verdict{Finding: f, Class: ClassSubdomainTakeover}
+	if strings.TrimSpace(f.Target) == "" {
+		vd.Status = StatusInconclusive
+		vd.Reason = "finding has no target host to re-resolve"
+		return vd
+	}
+	r := eng.Check(ctx, f.Target, nil, nil)
+	if r.Vulnerable {
+		vd.Status = StatusConfirmed
+		vd.Reason = r.Reason
+		vd.Evidence = r.Service + ": " + r.Evidence
+		return vd
+	}
+	vd.Status = StatusRefuted
+	vd.Reason = r.Reason
+	return vd
+}
 
 // ---- reflected XSS --------------------------------------------------------
 
@@ -274,12 +319,12 @@ func (exposedSecretVerifier) handles(f state.Finding) bool {
 // secretRes are well-formed secret shapes. A confirmed secret must match one of
 // these in the live re-fetch AND not be a placeholder.
 var secretRes = []*regexp.Regexp{
-	regexp.MustCompile(`AKIA[0-9A-Z]{16}`),                       // AWS access key id
-	regexp.MustCompile(`AIza[0-9A-Za-z\-_]{35}`),                 // Google API key
-	regexp.MustCompile(`xox[baprs]-[0-9A-Za-z\-]{10,}`),          // Slack token
-	regexp.MustCompile(`gh[pousr]_[0-9A-Za-z]{36,}`),             // GitHub token
-	regexp.MustCompile(`-----BEGIN [A-Z ]*PRIVATE KEY-----`),     // private key block
-	regexp.MustCompile(`sk_live_[0-9A-Za-z]{16,}`),               // Stripe live secret
+	regexp.MustCompile(`AKIA[0-9A-Z]{16}`),                                                 // AWS access key id
+	regexp.MustCompile(`AIza[0-9A-Za-z\-_]{35}`),                                           // Google API key
+	regexp.MustCompile(`xox[baprs]-[0-9A-Za-z\-]{10,}`),                                    // Slack token
+	regexp.MustCompile(`gh[pousr]_[0-9A-Za-z]{36,}`),                                       // GitHub token
+	regexp.MustCompile(`-----BEGIN [A-Z ]*PRIVATE KEY-----`),                               // private key block
+	regexp.MustCompile(`sk_live_[0-9A-Za-z]{16,}`),                                         // Stripe live secret
 	regexp.MustCompile(`eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}`), // JWT
 }
 

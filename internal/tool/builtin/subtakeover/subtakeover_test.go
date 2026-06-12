@@ -2,32 +2,56 @@ package subtakeover
 
 import (
 	"context"
-	"net"
-	"net/http"
-	"net/http/httptest"
-	"strings"
+	"errors"
 	"testing"
 
 	"github.com/dukotah/tyto/internal/action"
 	"github.com/dukotah/tyto/internal/state"
+	"github.com/dukotah/tyto/internal/takeover"
 )
 
-// stubTool returns a Tool whose HTTP client targets the given httptest server
-// and whose resolver is the system default (CNAME lookups of httptest's
-// 127.0.0.1 host simply return no provider match — kept off the real network for
-// the fingerprint assertions, which are the load-bearing paths here).
-func stubTool(srv *httptest.Server) *Tool {
-	return &Tool{
-		http: srv.Client(),
-		res:  net.DefaultResolver,
-	}
+// fakeResolver / fakeFetcher implement the takeover engine's injectable seams so
+// the tool is tested with NO network. LookupHost returns a live address by
+// default so the NXDOMAIN-only providers are never falsely triggered.
+type fakeResolver struct {
+	cname    string
+	cnameErr error
+	addrs    []string
+	hostErr  error
 }
 
-func bodyServer(t *testing.T, body string) *httptest.Server {
-	t.Helper()
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(body))
-	}))
+func (f fakeResolver) LookupCNAME(_ context.Context, _ string) (string, error) {
+	return f.cname, f.cnameErr
+}
+func (f fakeResolver) LookupHost(_ context.Context, _ string) ([]string, error) {
+	if f.hostErr != nil {
+		return nil, f.hostErr
+	}
+	if f.addrs == nil {
+		return []string{"203.0.113.10"}, nil
+	}
+	return f.addrs, nil
+}
+
+type fakeFetcher struct {
+	status int
+	body   string
+	err    error
+}
+
+func (f fakeFetcher) Fetch(_ context.Context, _ string) (int, string, error) {
+	if f.err != nil {
+		return 0, "", f.err
+	}
+	st := f.status
+	if st == 0 {
+		st = 200
+	}
+	return st, f.body, nil
+}
+
+func toolWith(cname, body string) *Tool {
+	return NewWith(fakeResolver{cname: cname}, fakeFetcher{body: body})
 }
 
 func findingByTitle(fs []state.Finding, title string) (state.Finding, bool) {
@@ -37,6 +61,15 @@ func findingByTitle(fs []state.Finding, title string) (state.Finding, bool) {
 		}
 	}
 	return state.Finding{}, false
+}
+
+func hasHigh(fs []state.Finding) bool {
+	for _, f := range fs {
+		if f.Severity == state.SeverityHigh {
+			return true
+		}
+	}
+	return false
 }
 
 func TestStaticToolMetadata(t *testing.T) {
@@ -84,124 +117,63 @@ func TestExecuteEmptyTarget(t *testing.T) {
 	}
 }
 
-func TestGitHubPagesFingerprint(t *testing.T) {
-	srv := bodyServer(t, "<html><body>There isn't a GitHub Pages site here.</body></html>")
-	defer srv.Close()
-
-	res, err := stubTool(srv).Execute(context.Background(), action.Action{ID: "gh", Target: srv.URL})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !res.Success {
-		t.Fatalf("expected Success, got Err=%q", res.Err)
-	}
-
+// DOUBLE-GATE SATISFIED: CNAME to provider AND unclaimed fingerprint => HIGH.
+func TestTakeover_GitHubPages_DoubleGated(t *testing.T) {
+	tl := toolWith("victim.github.io", "There isn't a GitHub Pages site here.")
+	res, _ := tl.Execute(context.Background(), action.Action{ID: "gh", Target: "sub.example.com"})
 	f, ok := findingByTitle(res.Findings, "Possible subdomain takeover (GitHub Pages)")
 	if !ok {
 		t.Fatalf("missing GitHub Pages takeover finding; got %+v", res.Findings)
 	}
-	if f.Severity != state.SeverityHigh {
-		t.Errorf("severity = %v, want High", f.Severity)
-	}
-	if !f.Validated {
-		t.Errorf("takeover finding should be Validated")
-	}
-	if !strings.Contains(f.Evidence, "There isn't a GitHub Pages site here.") {
-		t.Errorf("evidence should carry the matched fingerprint, got %q", f.Evidence)
+	if f.Severity != state.SeverityHigh || !f.Validated {
+		t.Errorf("want HIGH+Validated, got sev=%v validated=%v", f.Severity, f.Validated)
 	}
 }
 
-func TestAWSS3Fingerprint(t *testing.T) {
-	srv := bodyServer(t, "<Error><Code>NoSuchBucket</Code></Error>")
-	defer srv.Close()
-
-	res, err := stubTool(srv).Execute(context.Background(), action.Action{ID: "s3", Target: srv.URL})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	f, ok := findingByTitle(res.Findings, "Possible subdomain takeover (AWS S3)")
-	if !ok {
-		t.Fatalf("missing AWS S3 takeover finding; got %+v", res.Findings)
-	}
-	if f.Severity != state.SeverityHigh {
-		t.Errorf("severity = %v, want High", f.Severity)
-	}
-	if !f.Validated {
-		t.Errorf("takeover finding should be Validated")
+func TestTakeover_S3_DoubleGated(t *testing.T) {
+	tl := toolWith("my-bucket.s3.amazonaws.com", "<Error><Code>NoSuchBucket</Code></Error>")
+	res, _ := tl.Execute(context.Background(), action.Action{ID: "s3", Target: "sub.example.com"})
+	if !hasHigh(res.Findings) {
+		t.Fatalf("want HIGH for s3 NoSuchBucket double-gate; got %+v", res.Findings)
 	}
 }
 
-func TestNoFingerprint(t *testing.T) {
-	srv := bodyServer(t, "<html><body>Welcome to a perfectly normal, claimed site.</body></html>")
-	defer srv.Close()
-
-	res, err := stubTool(srv).Execute(context.Background(), action.Action{ID: "ok", Target: srv.URL})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+// CRITICAL FP GUARD: the body contains a fingerprint string, but the CNAME does
+// NOT point to any provider. A body match ALONE must never flag — this is the
+// exact false positive that bans a fresh bounty account.
+func TestNoTakeover_BodyMatchWithoutProviderCNAME(t *testing.T) {
+	// A page (e.g. a blog or WAF) that merely quotes "NoSuchBucket", but the host
+	// CNAMEs nowhere relevant.
+	tl := toolWith("", "Today we discuss the AWS NoSuchBucket error and how to fix it.")
+	res, _ := tl.Execute(context.Background(), action.Action{ID: "fp", Target: "sub.example.com"})
+	if hasHigh(res.Findings) {
+		t.Fatalf("FALSE POSITIVE: body-only fingerprint flagged HIGH without a provider CNAME: %+v", res.Findings)
 	}
-	if !res.Success {
-		t.Fatalf("expected Success, got Err=%q", res.Err)
-	}
-
-	if _, ok := findingByTitle(res.Findings, "No subdomain-takeover fingerprint detected"); !ok {
-		t.Fatalf("missing the negative (info) finding; got %+v", res.Findings)
-	}
-	// And no HIGH finding should be present.
-	for _, f := range res.Findings {
-		if f.Severity == state.SeverityHigh {
-			t.Errorf("unexpected HIGH finding on a clean body: %q", f.Title)
-		}
+	if _, ok := findingByTitle(res.Findings, "No subdomain-takeover detected"); !ok {
+		t.Fatalf("want the negative info finding; got %+v", res.Findings)
 	}
 }
 
-func TestConnectionError(t *testing.T) {
-	srv := bodyServer(t, "x")
-	url := srv.URL
-	tl := stubTool(srv)
-	srv.Close() // close so the request fails to connect
-
-	res, err := tl.Execute(context.Background(), action.Action{ID: "ce", Target: url})
-	if err != nil {
-		t.Fatalf("connection error must return nil error, got %v", err)
-	}
-	if res.Success {
-		t.Errorf("expected Success=false on connection error")
-	}
-	if res.Err == "" {
-		t.Errorf("expected res.Err to be populated on connection error")
-	}
-}
-
-// TestMatchCNAMEProvider exercises the CNAME-provider matching path without any
-// real network: matchCNAMEProvider is the pure decision function the resolver's
-// LookupCNAME result is fed into.
-func TestMatchCNAMEProvider(t *testing.T) {
-	cases := []struct{ cname, want string }{
-		{"victim.github.io", "GitHub Pages"},
-		{"github.io", "GitHub Pages"},
-		{"my-bucket.s3.amazonaws.com", "AWS S3"},
-		{"app.herokuapp.com", "Heroku"},
-		{"shop.myshopify.com", "Shopify"},
-		{"example.com", ""},
-		{"", ""},
-	}
-	for _, c := range cases {
-		if got := matchCNAMEProvider(c.cname); got != c.want {
-			t.Errorf("matchCNAMEProvider(%q) = %q, want %q", c.cname, got, c.want)
-		}
+// CLAIMED PAGE: CNAME points to a provider, but the page is a real published
+// site (no unclaimed fingerprint) => refuted, never HIGH.
+func TestNoTakeover_ClaimedProviderPage(t *testing.T) {
+	tl := toolWith("victim.github.io", "<html><body>Welcome to my live, claimed GitHub Pages site!</body></html>")
+	res, _ := tl.Execute(context.Background(), action.Action{ID: "claimed", Target: "sub.example.com"})
+	if hasHigh(res.Findings) {
+		t.Fatalf("FALSE POSITIVE: claimed provider page flagged HIGH: %+v", res.Findings)
 	}
 }
 
 func TestExecuteHonorsCancellation(t *testing.T) {
-	srv := bodyServer(t, "There isn't a GitHub Pages site here.")
-	defer srv.Close()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	res, err := stubTool(srv).Execute(ctx, action.Action{ID: "cx", Target: srv.URL})
+	tl := NewWith(fakeResolver{cnameErr: errors.New("cancelled")}, fakeFetcher{err: errors.New("cancelled")})
+	res, err := tl.Execute(ctx, action.Action{ID: "cx", Target: "sub.example.com"})
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("cancellation must not return a hard error: %v", err)
 	}
-	// Cancelled before/at the request: the HTTP call should fail, yielding a
-	// graceful non-success result rather than a panic or hang.
-	_ = res
+	if hasHigh(res.Findings) {
+		t.Errorf("a failed lookup/fetch must not produce a HIGH finding")
+	}
+	_ = takeover.ConfidenceHigh // keep the takeover import meaningful across refactors
 }

@@ -257,9 +257,9 @@ func TestUnknownClassInconclusive(t *testing.T) {
 // ValidateAll + Confirmed + Partition end-to-end: only confirmed findings pass.
 func TestValidateAllAndConfirmed(t *testing.T) {
 	findings := []state.Finding{
-		{Title: "Reflected XSS in parameter q", Target: "http://app.test/s?q=h"},          // confirmed
+		{Title: "Reflected XSS in parameter q", Target: "http://app.test/s?q=h"},                // confirmed
 		{Title: "Missing security header: Content-Security-Policy", Target: "http://app.test/"}, // refuted (present)
-		{Title: "Open port 22", Target: "host.test"},                                       // inconclusive
+		{Title: "Open port 22", Target: "host.test"},                                            // inconclusive
 	}
 	ff := fakeFetcher{fn: func(rawURL string) (Response, bool) {
 		if strings.Contains(rawURL, "/s") {
@@ -291,11 +291,11 @@ func TestValidateAllAndConfirmed(t *testing.T) {
 // Classify is consistent with handles().
 func TestClassify(t *testing.T) {
 	cases := map[string]Class{
-		"Reflected XSS in parameter q":                    ClassReflectedXSS,
-		"SQL injection (error-based) in parameter id":     ClassErrorSQLi,
-		"Missing security header: X-Frame-Options":        ClassMissingHeader,
-		"Exposed AWS access key ID":                       ClassExposedSecret,
-		"Some unrelated network finding":                  ClassUnknown,
+		"Reflected XSS in parameter q":                ClassReflectedXSS,
+		"SQL injection (error-based) in parameter id": ClassErrorSQLi,
+		"Missing security header: X-Frame-Options":    ClassMissingHeader,
+		"Exposed AWS access key ID":                   ClassExposedSecret,
+		"Some unrelated network finding":              ClassUnknown,
 	}
 	for title, want := range cases {
 		got := Classify(state.Finding{Title: title})
