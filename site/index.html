@@ -1,0 +1,234 @@
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>tyto</title>
+<style>
+  /* Layout: a dark operator's console — owl-as-reticle hero, a plan→guard→act
+     loop, the guard's verdicts, the arsenal. Deliberate single-dark world. */
+  :root{
+    --bg:#0a0d12;            /* cool near-black */
+    --panel:#11151c;         /* raised surface */
+    --line:#1f2630;          /* hairline */
+    --fg:#e7ecf2;            /* bone foreground */
+    --mut:#8b94a3;           /* muted */
+    --amber:#e7b24c;         /* owl-eye accent */
+    --amber-dim:#8a6f32;
+    --allow:#5bbf8f;         /* verdict: allow */
+    --hold:#e7b24c;          /* verdict: approval */
+    --deny:#e2685f;          /* verdict: deny */
+    --d:"Space Grotesk",system-ui,sans-serif;
+    --b:"Inter",system-ui,sans-serif;
+    --m:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box}
+  body{
+    background:var(--bg);color:var(--fg);font-family:var(--b);
+    line-height:1.6;-webkit-font-smoothing:antialiased;
+    background-image:radial-gradient(900px 500px at 70% -10%, #15202e 0%, transparent 60%);
+  }
+  .wrap{max-width:1040px;margin:0 auto;
+    padding-left:max(20px,env(safe-area-inset-left,0px));
+    padding-right:max(20px,env(safe-area-inset-right,0px));}
+  h1,h2,h3{font-family:var(--d);text-wrap:balance;margin:0;letter-spacing:-.01em}
+  a{color:inherit}
+  .mono{font-family:var(--m)}
+  .eyebrow{font-family:var(--m);font-size:.72rem;letter-spacing:.22em;text-transform:uppercase;color:var(--amber)}
+
+  /* hero */
+  header.hero{padding-block:72px 40px}
+  .mark{width:92px;height:92px;display:block}
+  .hero h1{font-size:clamp(3.4rem,11vw,6rem);line-height:.92;margin-top:22px}
+  .hero .tag{font-size:clamp(1.1rem,2.4vw,1.45rem);color:var(--fg);max-width:34ch;margin-top:18px}
+  .law{font-family:var(--m);color:var(--mut);margin-top:16px;font-size:.92rem}
+  .law b{color:var(--amber);font-weight:500}
+  .cta{display:flex;gap:12px;flex-wrap:wrap;margin-top:28px}
+  .btn{font-family:var(--m);font-size:.85rem;padding:11px 18px;border-radius:9px;
+    border:1px solid var(--line);text-decoration:none;color:var(--fg);background:var(--panel)}
+  .btn.p{background:var(--amber);color:#1a1205;border-color:var(--amber);font-weight:600}
+
+  /* strip */
+  .strip{border-block:1px solid var(--line);margin-top:44px}
+  .strip .wrap{display:flex;flex-wrap:wrap;gap:8px 28px;padding-block:16px;font-family:var(--m);font-size:.82rem;color:var(--mut)}
+  .strip b{color:var(--fg);font-weight:500}
+
+  section{padding-block:56px}
+  .lead{color:var(--mut);max-width:62ch;margin-top:10px}
+  h2{font-size:clamp(1.6rem,4vw,2.2rem)}
+
+  .grid{display:grid;gap:16px;margin-top:30px}
+  .cols-3{grid-template-columns:repeat(3,1fr)}
+  .cols-2{grid-template-columns:1.1fr .9fr}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px;min-width:0}
+  .card h3{font-size:1.05rem;margin-bottom:6px}
+  .card p{color:var(--mut);font-size:.93rem;margin:0}
+  .card .k{font-family:var(--m);font-size:.72rem;color:var(--amber);letter-spacing:.12em;text-transform:uppercase}
+
+  /* verdict chips */
+  .verdicts{display:flex;gap:10px;flex-wrap:wrap;margin-top:22px}
+  .chip{font-family:var(--m);font-size:.8rem;padding:7px 13px;border-radius:999px;border:1px solid}
+  .chip.a{color:var(--allow);border-color:#244b3b;background:#0f1d17}
+  .chip.h{color:var(--hold);border-color:#4b3d1c;background:#1c160a}
+  .chip.d{color:var(--deny);border-color:#4b2420;background:#1d100e}
+
+  /* risk scale */
+  .scale{display:flex;gap:2px;margin-top:20px;font-family:var(--m);font-size:.74rem}
+  .scale span{flex:1;text-align:center;padding:9px 6px;border:1px solid var(--line);color:var(--mut)}
+  .scale span:first-child{border-radius:7px 0 0 7px}
+  .scale span:last-child{border-radius:0 7px 7px 0}
+  .scale span.on{color:#1a1205;background:var(--amber);border-color:var(--amber);font-weight:600}
+
+  /* code block */
+  pre{font-family:var(--m);font-size:.82rem;line-height:1.7;background:#0c1016;border:1px solid var(--line);
+    border-radius:12px;padding:18px;overflow-x:auto;margin:0;color:#cdd6e2}
+  pre .c{color:var(--mut)}
+  pre .key{color:var(--amber)}
+  pre .str{color:var(--allow)}
+
+  /* arsenal */
+  .arsenal{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:8px;margin-top:24px}
+  .tool{font-family:var(--m);font-size:.76rem;color:var(--mut);background:var(--panel);
+    border:1px solid var(--line);border-radius:7px;padding:8px 10px;text-align:center;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .count{font-family:var(--d);font-size:3rem;color:var(--amber);line-height:1}
+
+  .diagram{margin-top:30px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px}
+  .diagram svg{width:100%;height:auto;display:block}
+
+  footer{border-top:1px solid var(--line);padding-block:34px;color:var(--mut);font-size:.85rem}
+  footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px}
+  .warn{border:1px solid #4b3d1c;background:#15110a;border-radius:12px;padding:16px 18px;margin-top:30px;color:#d8c79d;font-size:.92rem}
+  .warn b{color:var(--amber)}
+  @media(max-width:720px){.cols-3,.cols-2{grid-template-columns:1fr}}
+  @media(prefers-reduced-motion:no-preference){.pulse{animation:p 3.2s ease-in-out infinite}@keyframes p{0%,100%{opacity:.35}50%{opacity:1}}}
+</style>
+
+<header class="hero"><div class="wrap">
+  <!-- owl face as a targeting reticle -->
+  <svg class="mark" viewBox="0 0 120 120" aria-label="tyto mark" role="img">
+    <g fill="none" stroke="#e7b24c" stroke-width="2.4">
+      <path d="M60 14 C30 14 20 40 22 66 C24 96 44 112 60 112 C76 112 96 96 98 66 C100 40 90 14 60 14 Z" stroke="#2b3443"/>
+      <circle cx="42" cy="54" r="19"/><circle cx="78" cy="54" r="19"/>
+      <circle cx="42" cy="54" r="8" fill="#e7b24c" class="pulse"/><circle cx="78" cy="54" r="8" fill="#e7b24c" class="pulse"/>
+      <path d="M42 33 V75 M21 54 H63" stroke="#2b3443" stroke-width="1.3"/>
+      <path d="M78 33 V75 M57 54 H99" stroke="#2b3443" stroke-width="1.3"/>
+      <path d="M60 70 L53 82 H67 Z" fill="#e7b24c" stroke="none"/>
+    </g>
+  </svg>
+  <h1>tyto</h1>
+  <p class="tag">AI-orchestrated penetration testing for targets you're authorized to touch.</p>
+  <p class="law">The AI is the strategist. <b>The guard is the law.</b></p>
+  <div class="cta">
+    <a class="btn p" href="#loop">How it works</a>
+    <a class="btn" href="#arsenal">The arsenal</a>
+    <a class="btn" href="#operator">Put Opus in the seat</a>
+  </div>
+</div></header>
+
+<div class="strip"><div class="wrap">
+  <span>plan → guard → act → observe → <b>re-plan</b></span>
+  <span><b>55</b> built-in tools</span>
+  <span>deterministic <b>Scope Guard</b></span>
+  <span>tamper-evident <b>audit log</b></span>
+  <span><b>authorized testing only</b></span>
+</div></div>
+
+<section id="loop"><div class="wrap">
+  <p class="eyebrow">The core loop</p>
+  <h2>An operator, not a scanner</h2>
+  <p class="lead">Nmap, Nessus, Burp and Nuclei are tools you point. tyto is driven by a model that decides what to do next from the engagement's context, adapts to findings mid-run, and re-plans — while a guard it cannot override decides what's permitted.</p>
+  <div class="diagram"><svg viewBox="0 0 900 230" role="img" aria-label="Engagement feeds a plan, guard, act, observe, re-plan loop">
+    <defs><marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0 0 L7 3 L0 6 Z" fill="#8b94a3"/></marker></defs>
+    <g font-family="JetBrains Mono, monospace" font-size="13">
+      <rect x="18" y="86" width="170" height="58" rx="9" fill="#11151c" stroke="#1f2630"/>
+      <text x="103" y="110" fill="#e7ecf2" text-anchor="middle">Engagement</text>
+      <text x="103" y="128" fill="#8b94a3" text-anchor="middle" font-size="11">scope · rules · auth</text>
+      <line x1="188" y1="115" x2="236" y2="115" stroke="#8b94a3" marker-end="url(#ar)"/>
+      <rect x="238" y="86" width="120" height="58" rx="9" fill="#11151c" stroke="#1f2630"/>
+      <text x="298" y="120" fill="#e7ecf2" text-anchor="middle">PLAN</text>
+      <line x1="358" y1="115" x2="406" y2="115" stroke="#8b94a3" marker-end="url(#ar)"/>
+      <path d="M408 86 h120 v58 h-120 l-18 -29 Z" fill="#1c160a" stroke="#4b3d1c"/>
+      <text x="474" y="112" fill="#e7b24c" text-anchor="middle">GUARD</text>
+      <text x="474" y="130" fill="#8b94a3" text-anchor="middle" font-size="10">the law</text>
+      <line x1="528" y1="115" x2="576" y2="115" stroke="#8b94a3" marker-end="url(#ar)"/>
+      <rect x="578" y="86" width="120" height="58" rx="9" fill="#11151c" stroke="#1f2630"/>
+      <text x="638" y="120" fill="#e7ecf2" text-anchor="middle">ACT</text>
+      <line x1="698" y1="115" x2="746" y2="115" stroke="#8b94a3" marker-end="url(#ar)"/>
+      <rect x="748" y="86" width="134" height="58" rx="9" fill="#11151c" stroke="#1f2630"/>
+      <text x="815" y="112" fill="#e7ecf2" text-anchor="middle">OBSERVE</text>
+      <text x="815" y="130" fill="#8b94a3" text-anchor="middle" font-size="10">findings</text>
+      <path d="M815 144 V188 H298 V144" fill="none" stroke="#8b94a3" stroke-dasharray="4 4" marker-end="url(#ar)"/>
+      <text x="556" y="206" fill="#8b94a3" text-anchor="middle" font-size="11">re-plan from what was learned</text>
+    </g>
+  </svg></div>
+</div></section>
+
+<section id="guard" style="background:#0c1016;border-block:1px solid var(--line)"><div class="wrap">
+  <p class="eyebrow">The Scope Guard</p>
+  <h2>The model proposes. The guard disposes.</h2>
+  <p class="lead">Every proposed action is forced through a deterministic guard before anything touches a target. It gates on the authoritative tool metadata — never on what the model claims — and it fails closed. An unknown tool, an out-of-scope target, or a risk above the ceiling is denied, full stop.</p>
+  <div class="verdicts">
+    <span class="chip a">ALLOW — in scope, within ceiling</span>
+    <span class="chip h">REQUIRE_APPROVAL — human signs off</span>
+    <span class="chip d">DENY — out of scope / over ceiling</span>
+  </div>
+  <p class="lead" style="margin-top:28px">Risk ceiling, set per engagement — the guard refuses anything above it:</p>
+  <div class="scale"><span>passive</span><span>low</span><span class="on">medium</span><span>high</span></div>
+  <div class="grid cols-3">
+    <div class="card"><div class="k">Fail closed</div><h3>No covering grant, no action</h3><p>High-risk or exploit-category actions need a verified authorization covering the target, or a recorded self-attestation for assets you own.</p></div>
+    <div class="card"><div class="k">Human in the loop</div><h3>Mutating commands wait</h3><p>Any non-read-only command through the full-arsenal tool is forced to an explicit operator approval before it runs.</p></div>
+    <div class="card"><div class="k">Provable</div><h3>Tamper-evident audit</h3><p>Every decision, action and result is written to a hash-chained log, so the report matches exactly what ran.</p></div>
+  </div>
+</div></section>
+
+<section id="scope"><div class="wrap">
+  <p class="eyebrow">Scope as code</p>
+  <h2>Who hired you, what they own, what you may touch</h2>
+  <p class="lead">An engagement is a file. The guard enforces it; the model reads it as context. Load a bug-bounty program's published scope and tyto physically cannot fire a tool at anything outside it.</p>
+  <pre><span class="c"># engagement.yaml</span>
+<span class="key">client</span>: Acme Corp
+<span class="key">authorization</span>:
+  <span class="key">mode</span>: <span class="str">self-attested</span>   <span class="c"># or a client-signed grant</span>
+<span class="key">scope</span>:
+  <span class="key">in_scope</span>:
+    - { <span class="key">type</span>: domain, <span class="key">value</span>: <span class="str">app.acme.com</span> }
+  <span class="key">out_of_scope</span>: []
+<span class="key">rules_of_engagement</span>:
+  <span class="key">max_risk</span>: <span class="str">medium</span>
+  <span class="key">allowed_categories</span>: [recon, scan]
+  <span class="key">max_requests_per_second</span>: 8</pre>
+</div></section>
+
+<section id="arsenal" style="background:#0c1016;border-block:1px solid var(--line)"><div class="wrap">
+  <div style="display:flex;gap:22px;align-items:baseline;flex-wrap:wrap">
+    <span class="count">55</span>
+    <div><p class="eyebrow">The arsenal</p><h2>Built-in tools, plus the whole distro</h2></div>
+  </div>
+  <p class="lead">Pure-Go recon and web tooling that needs no external binaries, Kali shell-out adapters that degrade gracefully when a binary is absent, and a guarded escape hatch to run any command in the distro when the curated set isn't enough.</p>
+  <div class="arsenal">
+    <div class="tool">nmapscan</div><div class="tool">nucleiscan</div><div class="tool">httpprobe</div><div class="tool">webcrawl</div>
+    <div class="tool">dirfuzz</div><div class="tool">sqliexploit</div><div class="tool">sqlmap</div><div class="tool">ffuf</div>
+    <div class="tool">jwtcheck</div><div class="tool">secretscan</div><div class="tool">dotgit</div><div class="tool">corscheck</div>
+    <div class="tool">subfinder</div><div class="tool">subtakeover</div><div class="tool">kerberoast</div><div class="tool">ldapenum</div>
+    <div class="tool">smbenum</div><div class="tool">hydra</div><div class="tool">metasploit</div><div class="tool">oobcheck</div>
+    <div class="tool">ssti</div><div class="tool">webinject</div><div class="tool">redircheck</div><div class="tool">kali …</div>
+  </div>
+</div></section>
+
+<section id="operator"><div class="wrap">
+  <p class="eyebrow">The brain is pluggable</p>
+  <h2>Run it offline, or put a frontier model in the seat</h2>
+  <div class="grid cols-2">
+    <div class="card"><div class="k">Default</div><h3>Local model, air-gapped</h3><p>A local planner drives the loop with no cloud calls — the whole engagement reasons on your own hardware, offline.</p></div>
+    <div class="card"><div class="k">tyto mcp</div><h3>Opus as operator, over MCP</h3><p>Expose the arsenal over the Model Context Protocol and an external agent becomes the operator — while every call still routes through the same guard, approval gate and audit log. Full access never means bypass scope.</p></div>
+  </div>
+  <pre style="margin-top:16px"><span class="c"># hand the arsenal to Claude Code</span>
+claude mcp add tyto -- tyto mcp --engagement engagement.yaml</pre>
+</div></section>
+
+<section id="ethics"><div class="wrap">
+  <div class="warn"><b>⚠ Authorized testing only.</b> tyto refuses to act against any target that is not explicitly in-scope for a loaded, acknowledged engagement. Using it against systems you do not own or have written permission to test is illegal. The scope you load is the authorization — testing outside it is not sanctioned, no matter what the model proposes.</div>
+</div></section>
+
+<footer><div class="wrap">
+  <span class="mono">tyto · <span style="color:var(--amber)">tyto alba</span>, the barn owl — a quiet, precise, nocturnal hunter</span>
+  <span class="mono">plan → guard → act → observe → re-plan</span>
+</div></footer>

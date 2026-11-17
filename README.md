@@ -14,6 +14,12 @@ the strategist; the guard is the law.
 > Using it against systems you do not own or have written permission to test is
 > illegal. See [docs/ETHICS.md](docs/ETHICS.md).
 
+> 🦉 **New:** drive tyto with a frontier model instead of the local planner —
+> `tyto mcp` exposes the arsenal over the Model Context Protocol so an external
+> agent (e.g. Claude Code / Opus) becomes the operator, with every call still
+> routed through the same Scope Guard, approval gate and audit log. See
+> [docs/MCP.md](docs/MCP.md). A landing page lives in [`site/`](site/index.html).
+
 ---
 
 ## Why this is different

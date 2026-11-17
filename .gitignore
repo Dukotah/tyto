@@ -17,6 +17,8 @@ coverage.*
 /reports/
 *.engagement.yaml
 !configs/*.example.yaml
+# self-owned CTF fixture, no real client data:
+!proving-ground/*.engagement.yaml
 
 # Audit logs (may contain sensitive target data)
 *.audit.jsonl
