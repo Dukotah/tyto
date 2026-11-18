@@ -33,7 +33,7 @@ const defaultMaxCycles = 10
 // (the web console subscribes to these). Emitting is opt-in via Options.OnEvent;
 // CLI runs leave it nil and pay nothing.
 type Event struct {
-	Kind     string    `json:"kind"` // cycle|action|decision|result|finding|done|error|log|approval_required
+	Kind     string    `json:"kind"` // cycle|planning|action|decision|result|finding|done|error|log|approval_required|budget
 	Action   string    `json:"action,omitempty"`
 	Cycle    int       `json:"cycle,omitempty"`
 	Tool     string    `json:"tool,omitempty"`
@@ -56,6 +56,16 @@ type Options struct {
 	// NoProgressCycleLimit halts the loop after this many consecutive cycles that
 	// discover nothing new and run no novel action. <= 0 means the default (3).
 	NoProgressCycleLimit int
+	// MaxTokens is an approximate per-run budget on planner token spend (prompt +
+	// response, estimated — the engine never sees the model's true token usage).
+	// When the running estimate reaches it, the run stops cleanly with a budget
+	// terminal reason instead of starting another planning turn. <= 0 means
+	// unlimited, so existing runs are unaffected.
+	MaxTokens int
+	// EstimateTokens makes the token estimator swappable (e.g. a real tokenizer).
+	// nil means the built-in chars/4 approximation. Only consulted when MaxTokens
+	// > 0, so it costs nothing on an unbudgeted run.
+	EstimateTokens func(string) int
 	// PriorActionKeys are canonical keys of actions completed in an earlier run
 	// (from a resumed snapshot); they are pre-seeded as "seen" so resume doesn't
 	// re-execute them.
@@ -232,11 +242,41 @@ func (e *Engine) Run(ctx context.Context) error {
 		noProgressLimit = 3
 	}
 
+	// Per-run budget. Defaults keep today's behaviour: MaxTokens <= 0 is unlimited,
+	// and the cycle ceiling is just the resolved MaxCycles cap. Only the token
+	// estimator is wired here; it's consulted solely when a token ceiling is set.
+	estimate := e.opts.EstimateTokens
+	if estimate == nil {
+		estimate = estimateTokens
+	}
+	bdg := &budget{maxCycles: cycles, maxTokens: e.opts.MaxTokens, estimate: estimate}
+
+	// terminalReason records why the loop stopped (for the final "done" event and,
+	// for the budget cases, a dedicated audit record). "" after the loop means it
+	// ran to the cycle ceiling — i.e. the cycle budget was the stopping condition.
+	terminalReason := ""
 	noProgress := 0
 	for c := 1; c <= cycles; c++ {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+
+		// Budget gate (checked first, before any planning): a run that has already
+		// spent its approximate token budget stops cleanly here rather than opening
+		// another planning turn. Only reachable once a ceiling is set and prior
+		// cycles have consumed it, so unbudgeted runs never enter this branch.
+		if bdg.tokensExhausted() {
+			fmt.Fprintf(e.out, "token budget exhausted (~%d/%d tokens); halting.\n", bdg.tokens, bdg.maxTokens)
+			if err := e.rec("budget_exhausted", map[string]any{
+				"kind": "tokens", "cycle": c, "approx_tokens": bdg.tokens, "limit": bdg.maxTokens,
+			}); err != nil {
+				return err
+			}
+			e.emit(Event{Kind: "budget", Cycle: c, Reason: reasonTokenBudget, Message: fmt.Sprintf("token budget exhausted (~%d/%d tokens)", bdg.tokens, bdg.maxTokens)})
+			terminalReason = reasonTokenBudget
+			break
+		}
+
 		fmt.Fprintf(e.out, "\n── cycle %d/%d ──\n", c, cycles)
 		e.emit(Event{Kind: "cycle", Cycle: c})
 
@@ -263,7 +303,16 @@ func (e *Engine) Run(ctx context.Context) error {
 			// this call can take a while; without this the live feed looks frozen between
 			// a cycle marker and the first action. The UI renders it as a "thinking" state.
 			e.emit(Event{Kind: "planning", Cycle: c, Message: "deciding the next actions…"})
+			// Account the prompt's approximate token cost before the call, only when a
+			// token ceiling is set (rebuilding the prompt the planner also builds costs
+			// a little, so an unbudgeted run skips it entirely).
+			if bdg.maxTokens > 0 {
+				bdg.addText(planner.SystemPrompt(), planner.UserPrompt(e.eng, e.state, e.tools.Names(), e.scratch))
+			}
 			actions, err = e.planner.Plan(ctx, e.eng, e.state, e.tools.Names(), e.scratch)
+			if err == nil && bdg.maxTokens > 0 {
+				bdg.addText(responseCost(actions))
+			}
 		}
 		if err != nil {
 			e.emit(Event{Kind: "error", Cycle: c, Message: fmt.Sprintf("planner error: %v", err)})
@@ -272,6 +321,7 @@ func (e *Engine) Run(ctx context.Context) error {
 		if len(actions) == 0 {
 			fmt.Fprintln(e.out, "planner proposed no further actions; stopping.")
 			e.emit(Event{Kind: "log", Message: "planner proposed no further actions; stopping"})
+			terminalReason = reasonPlannerDone
 			break
 		}
 
@@ -293,15 +343,28 @@ func (e *Engine) Run(ctx context.Context) error {
 			if err := e.rec("no_progress_halt", map[string]any{"cycle": c, "limit": noProgressLimit}); err != nil {
 				return err
 			}
+			terminalReason = reasonNoProgress
 			break
 		}
 	}
 
-	if err := e.rec("info", map[string]any{"event": "engagement_end", "id": e.eng.ID}); err != nil {
+	// No break fired ⇒ the loop ran to its cycle ceiling: the cycle budget was the
+	// stopping condition. Record it the same way as the token budget so the audit
+	// trail always carries a terminal reason.
+	if terminalReason == "" {
+		terminalReason = reasonCycleBudget
+		fmt.Fprintf(e.out, "cycle budget exhausted (%d cycle(s)); halting.\n", cycles)
+		if err := e.rec("budget_exhausted", map[string]any{"kind": "cycles", "limit": cycles}); err != nil {
+			return err
+		}
+		e.emit(Event{Kind: "budget", Reason: reasonCycleBudget, Message: fmt.Sprintf("cycle budget exhausted (%d cycle(s))", cycles)})
+	}
+
+	if err := e.rec("info", map[string]any{"event": "engagement_end", "id": e.eng.ID, "terminal_reason": terminalReason}); err != nil {
 		return err
 	}
 	fmt.Fprintf(e.out, "\naudit head: %s\n", e.audit.Head())
-	e.emit(Event{Kind: "done", Message: "audit head " + e.audit.Head()})
+	e.emit(Event{Kind: "done", Reason: terminalReason, Message: "audit head " + e.audit.Head()})
 	return nil
 }
 
@@ -535,6 +598,10 @@ func (e *Engine) admit(ctx context.Context, a action.Action) (*admitted, error) 
 // finding/credential) for the no-progress termination contract.
 func (e *Engine) commit(ad *admitted) (bool, error) {
 	a, res := ad.a, ad.res
+	// Feed the result to the noise governor so the per-target rate adapts to trouble
+	// (429/503, connection resets). Done here in the serial COMMIT phase so the
+	// governor's per-target state is never touched from a concurrent goroutine.
+	e.throttle.observe(a.Target, res.Output, resultError(res, ad.err))
 	if ad.err != nil {
 		fmt.Fprintf(e.out, "  ERROR %-12s %-22s — %v\n", a.Tool, a.Target, ad.err)
 	}
@@ -585,6 +652,20 @@ func (e *Engine) commit(ad *admitted) (bool, error) {
 	e.scratch.Record(planner.Attempt{Tool: a.Tool, Target: a.Target, Verdict: "allow", Outcome: outcomeSummary(res, newFinding)})
 	// Progress = a novel action that ran successfully, or any new asset/finding/cred.
 	return res.Success || newFinding || newAsset || newCred, nil
+}
+
+// resultError merges a tool's reported error (res.Err) with any execution error
+// into one string, so the noise governor can scan both for trouble signals (a
+// connection reset can surface either place).
+func resultError(res action.Result, execErr error) string {
+	s := res.Err
+	if execErr != nil {
+		if s != "" {
+			s += " "
+		}
+		s += execErr.Error()
+	}
+	return s
 }
 
 // outcomeSummary is a short human note of what an action produced, for the
