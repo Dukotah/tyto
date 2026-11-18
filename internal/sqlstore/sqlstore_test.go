@@ -75,9 +75,42 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	}
 	defer s2.Close()
 
-	assets, findings, keys, err := s2.LoadState(eng)
+	assets, findings, keys, graph, coverage, err := s2.LoadState(eng)
 	if err != nil {
 		t.Fatalf("LoadState: %v", err)
+	}
+
+	// Graph was mirrored from the flat assets: asset-1 is an IP node (10.0.0.1),
+	// asset-2 a service node (10.0.0.1:443) parented to that IP.
+	gByKey := map[string]*state.GraphNode{}
+	for _, n := range graph {
+		gByKey[n.Key] = n
+	}
+	ipNode := gByKey[state.KindIP.Key("10.0.0.1")]
+	svcNode := gByKey[state.KindService.Key("10.0.0.1:443")]
+	if ipNode == nil || svcNode == nil {
+		t.Fatalf("graph missing expected nodes: %+v", graph)
+	}
+	if svcNode.ParentKey != ipNode.Key {
+		t.Errorf("service parent = %q, want ip key %q", svcNode.ParentKey, ipNode.Key)
+	}
+	if got := svcNode.Attrs["product"]; got != "nginx" {
+		t.Errorf("service node Attrs[product] = %q, want nginx (round-trip)", got)
+	}
+
+	// Coverage was auto-anchored from the two findings' targets.
+	if len(coverage) != 2 {
+		t.Fatalf("coverage anchors = %d, want 2: %+v", len(coverage), coverage)
+	}
+	coveredRef := map[string]bool{}
+	for _, c := range coverage {
+		coveredRef[c.AssetRef] = true
+		if c.Kind != state.CoverageFinding {
+			t.Errorf("coverage kind = %q, want finding", c.Kind)
+		}
+	}
+	if !coveredRef["10.0.0.1"] || !coveredRef["10.0.0.1:443"] {
+		t.Errorf("coverage missing a finding target: %+v", coverage)
 	}
 
 	if len(assets) != 2 {
@@ -172,6 +205,15 @@ func TestInto(t *testing.T) {
 	if len(keys) != 2 {
 		t.Errorf("Into keys = %d, want 2", len(keys))
 	}
+	if len(fresh.Graph()) != 2 {
+		t.Errorf("replayed graph nodes = %d, want 2", len(fresh.Graph()))
+	}
+	if len(fresh.Coverage()) != 2 {
+		t.Errorf("replayed coverage anchors = %d, want 2", len(fresh.Coverage()))
+	}
+	if !fresh.Covered("10.0.0.1:443") {
+		t.Error("replayed state should report 10.0.0.1:443 as covered")
+	}
 }
 
 func TestSaveStateIdempotent(t *testing.T) {
@@ -192,7 +234,7 @@ func TestSaveStateIdempotent(t *testing.T) {
 		}
 	}
 
-	assets, findings, keys, err := s.LoadState(eng)
+	assets, findings, keys, graph, coverage, err := s.LoadState(eng)
 	if err != nil {
 		t.Fatalf("LoadState: %v", err)
 	}
@@ -204,5 +246,13 @@ func TestSaveStateIdempotent(t *testing.T) {
 	}
 	if len(keys) != 2 {
 		t.Errorf("completed keys = %d after 3 saves, want 2 (no dupes)", len(keys))
+	}
+	// asset-1 (IP) + asset-2 (service) mirror to 2 graph nodes; repeated saves
+	// must upsert, not duplicate.
+	if len(graph) != 2 {
+		t.Errorf("graph nodes = %d after 3 saves, want 2 (no dupes)", len(graph))
+	}
+	if len(coverage) != 2 {
+		t.Errorf("coverage anchors = %d after 3 saves, want 2 (no dupes)", len(coverage))
 	}
 }

@@ -52,6 +52,25 @@ CREATE TABLE IF NOT EXISTS completed_actions (
 	key           TEXT NOT NULL,
 	PRIMARY KEY (engagement_id, key)
 );
+CREATE TABLE IF NOT EXISTS asset_graph (
+	engagement_id TEXT NOT NULL,
+	key           TEXT NOT NULL,
+	kind          TEXT,
+	value         TEXT,
+	parent_key    TEXT,
+	attrs         TEXT,
+	first_seen    TIMESTAMP,
+	PRIMARY KEY (engagement_id, key)
+);
+CREATE TABLE IF NOT EXISTS coverage (
+	engagement_id TEXT NOT NULL,
+	asset_ref     TEXT NOT NULL,
+	kind          TEXT NOT NULL,
+	ref           TEXT NOT NULL,
+	direction     TEXT NOT NULL,
+	touched_at    TIMESTAMP,
+	PRIMARY KEY (engagement_id, asset_ref, kind, ref, direction)
+);
 `
 
 // Open opens (creating if needed) the database at path and applies the
@@ -125,25 +144,62 @@ func (s *Store) SaveState(engagementID string, st *state.State, completedActions
 		}
 	}
 
+	for _, n := range st.Graph() {
+		attrs, err := marshalAttrs(n.Attrs)
+		if err != nil {
+			return fmt.Errorf("marshal attrs for graph node %s: %w", n.Key, err)
+		}
+		if _, err := tx.Exec(
+			`INSERT INTO asset_graph (engagement_id, key, kind, value, parent_key, attrs, first_seen)
+			 VALUES (?, ?, ?, ?, ?, ?, ?)
+			 ON CONFLICT(engagement_id, key) DO UPDATE SET
+			   kind=excluded.kind, value=excluded.value,
+			   parent_key=excluded.parent_key, attrs=excluded.attrs,
+			   first_seen=excluded.first_seen`,
+			engagementID, n.Key, string(n.Kind), n.Value, n.ParentKey, attrs, n.FirstSeen,
+		); err != nil {
+			return fmt.Errorf("save graph node %s: %w", n.Key, err)
+		}
+	}
+
+	for _, c := range st.Coverage() {
+		if _, err := tx.Exec(
+			`INSERT OR IGNORE INTO coverage
+			 (engagement_id, asset_ref, kind, ref, direction, touched_at)
+			 VALUES (?, ?, ?, ?, ?, ?)`,
+			engagementID, c.AssetRef, string(c.Kind), c.Ref, c.Direction, c.At,
+		); err != nil {
+			return fmt.Errorf("save coverage anchor %q: %w", c.Ref, err)
+		}
+	}
+
 	return tx.Commit()
 }
 
-// LoadState reads back the persisted assets, findings, and completed-action
-// keys for an engagement.
-func (s *Store) LoadState(engagementID string) (assets []*state.Asset, findings []state.Finding, completedActions []string, err error) {
+// LoadState reads back the persisted assets, findings, completed-action keys,
+// normalized asset graph, and coverage anchors for an engagement.
+func (s *Store) LoadState(engagementID string) (assets []*state.Asset, findings []state.Finding, completedActions []string, graph []*state.GraphNode, coverage []state.CoverageAnchor, err error) {
 	assets, err = s.loadAssets(engagementID)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 	findings, err = s.loadFindings(engagementID)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 	completedActions, err = s.loadCompletedActions(engagementID)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
-	return assets, findings, completedActions, nil
+	graph, err = s.loadGraph(engagementID)
+	if err != nil {
+		return nil, nil, nil, nil, nil, err
+	}
+	coverage, err = s.loadCoverage(engagementID)
+	if err != nil {
+		return nil, nil, nil, nil, nil, err
+	}
+	return assets, findings, completedActions, graph, coverage, nil
 }
 
 func (s *Store) loadAssets(engagementID string) ([]*state.Asset, error) {
@@ -217,11 +273,67 @@ func (s *Store) loadCompletedActions(engagementID string) ([]string, error) {
 	return out, rows.Err()
 }
 
-// Into loads the engagement and replays its assets and findings into st (via
-// AddAsset/AddFinding, so dedup rules apply), returning the completed-action
-// keys. It mirrors store.Snapshot.Into for the SQLite store.
+func (s *Store) loadGraph(engagementID string) ([]*state.GraphNode, error) {
+	rows, err := s.db.Query(
+		`SELECT key, kind, value, parent_key, attrs, first_seen FROM asset_graph
+		 WHERE engagement_id=? ORDER BY key`, engagementID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []*state.GraphNode
+	for rows.Next() {
+		var (
+			n     state.GraphNode
+			kind  string
+			attrs sql.NullString
+		)
+		if err := rows.Scan(&n.Key, &kind, &n.Value, &n.ParentKey, &attrs, &n.FirstSeen); err != nil {
+			return nil, err
+		}
+		n.Kind = state.AssetKind(kind)
+		n.Attrs, err = unmarshalAttrs(attrs)
+		if err != nil {
+			return nil, fmt.Errorf("unmarshal attrs for graph node %s: %w", n.Key, err)
+		}
+		out = append(out, &n)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) loadCoverage(engagementID string) ([]state.CoverageAnchor, error) {
+	rows, err := s.db.Query(
+		`SELECT asset_ref, kind, ref, direction, touched_at FROM coverage
+		 WHERE engagement_id=? ORDER BY touched_at, ref`, engagementID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []state.CoverageAnchor
+	for rows.Next() {
+		var (
+			c    state.CoverageAnchor
+			kind string
+		)
+		if err := rows.Scan(&c.AssetRef, &kind, &c.Ref, &c.Direction, &c.At); err != nil {
+			return nil, err
+		}
+		c.Kind = state.CoverageKind(kind)
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// Into loads the engagement and replays its assets, findings, graph, and
+// coverage into st, returning the completed-action keys. Assets/findings go
+// through AddAsset/AddFinding so dedup rules apply (and the graph/coverage are
+// re-derived from them); the persisted graph nodes are then applied verbatim via
+// AddGraphNode to restore any program-computed links, and coverage anchors are
+// replayed via AddCoverage. It mirrors store.Snapshot.Into for the SQLite store.
 func (s *Store) Into(engagementID string, st *state.State) ([]string, error) {
-	assets, findings, completed, err := s.LoadState(engagementID)
+	assets, findings, completed, graph, coverage, err := s.LoadState(engagementID)
 	if err != nil {
 		return nil, err
 	}
@@ -230,6 +342,12 @@ func (s *Store) Into(engagementID string, st *state.State) ([]string, error) {
 	}
 	for _, f := range findings {
 		st.AddFinding(f)
+	}
+	for _, n := range graph {
+		st.AddGraphNode(n)
+	}
+	for _, c := range coverage {
+		st.AddCoverage(c)
 	}
 	return completed, nil
 }

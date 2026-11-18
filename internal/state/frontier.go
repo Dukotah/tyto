@@ -18,6 +18,14 @@ type Frontier struct {
 	Service   string
 	Port      string
 	Suggested []string
+	// Coverage view (see coverage.go): Covered is true once any action/finding has
+	// touched this asset. CoveredDirections / UncoveredDirections partition the
+	// Suggested hints into "already tested" vs "still open", so the planner (and
+	// the report) can push toward untested directions instead of repeating work.
+	// These are derived from coverage anchors and carry no quarantined free text.
+	Covered             bool
+	CoveredDirections   []string
+	UncoveredDirections []string
 }
 
 // Frontier computes the current technique frontier from known service assets,
@@ -31,13 +39,30 @@ func (s *State) Frontier() []Frontier {
 			continue
 		}
 		svc := a.Attrs["service"]
+		suggested := suggestionsFor(svc)
+		// Split the technique directions into covered vs uncovered using the
+		// coverage anchors. An asset can be matched either by its flat ID or its
+		// Value, since a toucher may reference the asset by either.
+		covered := s.coveredLocked(a.ID) || s.coveredLocked(a.Value)
+		var done, open []string
+		for _, d := range suggested {
+			d = sanitizeField(d)
+			if s.coveredDirLocked(a.ID, d) || s.coveredDirLocked(a.Value, d) {
+				done = append(done, d)
+			} else {
+				open = append(open, d)
+			}
+		}
 		out = append(out, Frontier{
-			AssetID:   a.ID,
-			AssetType: sanitizeField(a.Type),
-			Value:     sanitizeField(a.Value),
-			Service:   sanitizeField(svc),
-			Port:      sanitizeField(a.Attrs["port"]),
-			Suggested: suggestionsFor(svc),
+			AssetID:             a.ID,
+			AssetType:           sanitizeField(a.Type),
+			Value:               sanitizeField(a.Value),
+			Service:             sanitizeField(svc),
+			Port:                sanitizeField(a.Attrs["port"]),
+			Suggested:           suggested,
+			Covered:             covered,
+			CoveredDirections:   done,
+			UncoveredDirections: open,
 		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Value < out[j].Value })
