@@ -10,6 +10,7 @@ import (
 
 	"github.com/dukotah/tyto/internal/cvss"
 	"github.com/dukotah/tyto/internal/engagement"
+	"github.com/dukotah/tyto/internal/evidence"
 	"github.com/dukotah/tyto/internal/state"
 )
 
@@ -58,6 +59,11 @@ type FindingView struct {
 	Impact      string  `json:"impact,omitempty"`
 	Evidence    string  `json:"evidence,omitempty"`
 	Remediation string  `json:"remediation,omitempty"`
+	// EvidenceRecords are the captured HTTP request/response pairs proving this
+	// finding, attached by finding ID from an evidence.Store. Empty (and omitted
+	// from JSON) when no store was supplied or the finding has no captured
+	// traffic — so a report built without evidence renders exactly as before.
+	EvidenceRecords []evidence.Record `json:"evidence_records,omitempty"`
 }
 
 // remediationByTool maps a finding's producing tool to concrete remediation
@@ -83,6 +89,50 @@ var remediationByTool = map[string]string{
 }
 
 func remediationFor(toolName string) string { return remediationByTool[strings.ToLower(toolName)] }
+
+// writeEvidenceRecords renders a finding's captured request/response pairs as a
+// nested, fenced block under the finding. It emits nothing when there is no
+// captured evidence, so findings without evidence render exactly as before.
+func writeEvidenceRecords(b *strings.Builder, recs []evidence.Record) {
+	for _, rec := range recs {
+		fmt.Fprintf(b, "  - evidence (%s): %s %s -> %d\n", rec.EvidenceID, rec.Method, rec.URL, rec.Status)
+		b.WriteString("    ```http\n")
+		fmt.Fprintf(b, "    %s %s\n", rec.Method, rec.URL)
+		writeEvidenceHeaders(b, rec.RequestHeaders)
+		if rec.RequestBody != "" {
+			writeEvidenceBody(b, rec.RequestBody, rec.RequestTruncated)
+		}
+		fmt.Fprintf(b, "    --- %d ---\n", rec.Status)
+		writeEvidenceHeaders(b, rec.ResponseHeaders)
+		if rec.ResponseBody != "" {
+			writeEvidenceBody(b, rec.ResponseBody, rec.ResponseTruncated)
+		}
+		b.WriteString("    ```\n")
+	}
+}
+
+func writeEvidenceHeaders(b *strings.Builder, h map[string][]string) {
+	keys := make([]string, 0, len(h))
+	for k := range h {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		for _, v := range h[k] {
+			fmt.Fprintf(b, "    %s: %s\n", k, v)
+		}
+	}
+}
+
+func writeEvidenceBody(b *strings.Builder, body string, truncated bool) {
+	b.WriteString("    \n")
+	for _, line := range strings.Split(body, "\n") {
+		fmt.Fprintf(b, "    %s\n", strings.TrimRight(line, "\r"))
+	}
+	if truncated {
+		b.WriteString("    [truncated]\n")
+	}
+}
 
 // execSummary renders an auto-generated executive-summary paragraph from the
 // report totals — the high-level "what was found and how bad" a client or triager
@@ -120,6 +170,13 @@ type AssetView struct {
 
 // Build assembles the structured Report from engagement state.
 func Build(eng *engagement.Engagement, st *state.State) Report {
+	return BuildWithEvidence(eng, st, nil)
+}
+
+// BuildWithEvidence assembles the Report and, when ev is non-nil, attaches each
+// finding's captured HTTP request/response evidence (looked up by the finding's
+// ID). A nil ev yields exactly the same Report as Build — no evidence is attached.
+func BuildWithEvidence(eng *engagement.Engagement, st *state.State, ev evidence.Store) Report {
 	findings := st.Findings()
 	sort.SliceStable(findings, func(i, j int) bool { return findings[i].Severity > findings[j].Severity })
 
@@ -147,6 +204,9 @@ func Build(eng *engagement.Engagement, st *state.State) Report {
 				fv.CVSSVector = f.CVSS
 			}
 		}
+		if ev != nil {
+			fv.EvidenceRecords = ev.For(f.ID)
+		}
 		r.Findings = append(r.Findings, fv)
 	}
 	for _, c := range st.Credentials() {
@@ -166,10 +226,24 @@ func RenderJSON(eng *engagement.Engagement, st *state.State) ([]byte, error) {
 	return json.MarshalIndent(Build(eng, st), "", "  ")
 }
 
+// RenderJSONWithEvidence is RenderJSON with captured request/response evidence
+// attached to each finding (by finding ID) from ev. A nil ev is identical to
+// RenderJSON.
+func RenderJSONWithEvidence(eng *engagement.Engagement, st *state.State, ev evidence.Store) ([]byte, error) {
+	return json.MarshalIndent(BuildWithEvidence(eng, st, ev), "", "  ")
+}
+
 // Render (Markdown) is the default human-readable report, grouped by target and
 // separating validated findings from unvalidated candidates.
 func Render(eng *engagement.Engagement, st *state.State) string {
-	r := Build(eng, st)
+	return RenderWithEvidence(eng, st, nil)
+}
+
+// RenderWithEvidence is Render with each finding's captured HTTP request/response
+// evidence (by finding ID) rendered beneath it from ev. A nil ev renders exactly
+// as Render — findings with no evidence are unchanged either way.
+func RenderWithEvidence(eng *engagement.Engagement, st *state.State, ev evidence.Store) string {
+	r := BuildWithEvidence(eng, st, ev)
 	var b strings.Builder
 
 	fmt.Fprintf(&b, "# Engagement report — %s\n\n", r.EngagementID)
@@ -238,6 +312,7 @@ func Render(eng *engagement.Engagement, st *state.State) string {
 				if f.Remediation != "" {
 					fmt.Fprintf(&b, "  - remediation: %s\n", f.Remediation)
 				}
+				writeEvidenceRecords(&b, f.EvidenceRecords)
 			}
 		}
 		b.WriteString("\n")
