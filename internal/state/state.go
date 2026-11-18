@@ -28,11 +28,29 @@ type State struct {
 	findings    []Finding
 	findingKeys map[string]bool // dedup: one logical issue = one finding
 	creds       credStore       // recovered credentials (see credential.go)
+
+	// Normalized asset graph (see graph.go): the deduplicated root_domain ->
+	// subdomain -> ip -> service -> endpoint hierarchy, mirrored from AddAsset.
+	graph map[string]*GraphNode
+
+	// Coverage anchors (see coverage.go): which actions/findings touched which
+	// assets, plus the derived lookup indices.
+	coverage     []CoverageAnchor
+	coverageKeys map[string]bool            // dedup by (kind, ref, direction, asset)
+	coveredRefs  map[string]bool            // normalized asset ref -> touched at all
+	coveredDirs  map[string]map[string]bool // normalized asset ref -> covered directions
 }
 
 // New returns an empty State.
 func New() *State {
-	return &State{assets: make(map[string]*Asset), findingKeys: make(map[string]bool)}
+	return &State{
+		assets:       make(map[string]*Asset),
+		findingKeys:  make(map[string]bool),
+		graph:        make(map[string]*GraphNode),
+		coverageKeys: make(map[string]bool),
+		coveredRefs:  make(map[string]bool),
+		coveredDirs:  make(map[string]map[string]bool),
+	}
 }
 
 // AddAsset records (or replaces) an asset by ID. It returns true if the ID was
@@ -46,6 +64,9 @@ func (s *State) AddAsset(a *Asset) bool {
 	}
 	_, existed := s.assets[a.ID]
 	s.assets[a.ID] = a
+	// Mirror into the normalized graph so the hierarchy is built by the existing
+	// discovery path; the program (not the caller) computes keys and parent links.
+	s.mirrorAssetLocked(a)
 	return !existed
 }
 
@@ -78,6 +99,8 @@ func (s *State) AddFinding(f Finding) bool {
 		f.FoundAt = time.Now().UTC()
 	}
 	s.findings = append(s.findings, f)
+	// Auto-anchor coverage: a finding is direct evidence its target was tested.
+	s.addCoverageLocked(CoverageAnchor{AssetRef: f.Target, Kind: CoverageFinding, Ref: f.ID, At: f.FoundAt})
 	return true
 }
 
