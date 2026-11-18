@@ -45,3 +45,5 @@ vendor/
 
 # Local go test tmp (AppLocker workaround)
 /.gotmp/
+
+.claude/worktrees/
