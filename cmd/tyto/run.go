@@ -37,6 +37,7 @@ type runOptions struct {
 	ollamaURL    string
 	llmBaseURL   string
 	cycles       int
+	maxTokens    int
 	auditPath    string
 	noReport     bool
 	reportFormat string
@@ -69,6 +70,7 @@ func newRunCmd() *cobra.Command {
 	f.StringVar(&o.ollamaURL, "ollama-url", "http://localhost:11434", "ollama base URL")
 	f.StringVar(&o.llmBaseURL, "llm-base-url", "", "OpenAI-compatible API base URL for --planner openai (default https://api.openai.com/v1; e.g. http://localhost:1234/v1 for LM Studio/vLLM). API key read from TYTO_LLM_API_KEY or OPENAI_API_KEY.")
 	f.IntVar(&o.cycles, "cycles", 3, "max plan/act cycles (loop halts early on no progress)")
+	f.IntVar(&o.maxTokens, "max-tokens", 0, "approximate planner token budget for the whole run (prompt+response, estimated); 0 = unlimited. Run stops cleanly when reached.")
 	f.StringVar(&o.auditPath, "audit", "", "audit log path (default: <engagement-id>.audit.jsonl)")
 	f.BoolVar(&o.noReport, "no-report", false, "skip printing the report at the end")
 	f.StringVar(&o.reportFormat, "report-format", "md", "report format: md|submission|json|sarif|html")
@@ -227,7 +229,7 @@ func (o *runOptions) run(cmd *cobra.Command, _ []string) error {
 		st,
 		alog,
 		out,
-		engine.Options{DryRun: o.dryRun, MaxCycles: o.cycles, PriorActionKeys: priorActions,
+		engine.Options{DryRun: o.dryRun, MaxCycles: o.cycles, MaxTokens: o.maxTokens, PriorActionKeys: priorActions,
 			HuntMode: o.hunt, HuntMaxHosts: o.huntMaxHosts},
 	)
 

@@ -602,6 +602,11 @@ func (e *Engine) commit(ad *admitted) (bool, error) {
 	// (429/503, connection resets). Done here in the serial COMMIT phase so the
 	// governor's per-target state is never touched from a concurrent goroutine.
 	e.throttle.observe(a.Target, res.Output, resultError(res, ad.err))
+	// Record that this executed action touched its target asset, so the frontier's
+	// coverage view (Covered / UncoveredDirections) reflects actions, not just
+	// findings. Direction is left empty — asset-level coverage; per-direction
+	// classification follows once the planner tags actions with a technique.
+	e.state.AddCoverage(state.CoverageAnchor{AssetRef: a.Target, Kind: state.CoverageAction, Ref: a.Tool})
 	if ad.err != nil {
 		fmt.Fprintf(e.out, "  ERROR %-12s %-22s — %v\n", a.Tool, a.Target, ad.err)
 	}

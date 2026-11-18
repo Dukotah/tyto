@@ -29,6 +29,25 @@ Read their concepts, then build tyto's own version.
 
 Sized S / M / L. Sequenced so each lands value independently.
 
+### v2 status (2026-11-18)
+- **#1 model backends — DONE & integrated** (OpenAI-compatible, `--planner openai`).
+- **#2 asset graph + coverage — MERGED.** Normalized graph + coverage anchors in
+  `internal/state`, persisted via `internal/sqlstore`. Findings auto-anchor;
+  executed actions now anchor too (wired in `engine.commit`). *Deferred:* surfacing
+  Covered/UncoveredDirections in the planner prompt (needs a methodology↔coverage
+  correlation; the report accessors already exist).
+- **#4 evidence capture — MERGED.** `internal/evidence` (recording RoundTripper +
+  store, secret redaction) + report rendering. *Deferred:* injecting the recording
+  client into the HTTP tools — they each build their own `*http.Client`, so this
+  needs a client-injection seam on the tools/engine before capture is live at
+  runtime. Package + report path are tested and ready.
+- **#6 budgets + governor + injection framing — MERGED & live.** Token/turn budget
+  (`--max-tokens`), adaptive noise governor, untrusted-tool-output fence in the
+  planner prompt. Defaults preserve prior behavior.
+- Validation note: the dev machine's Application Control policy + DrvFs mount block
+  executing Go test binaries intermittently; `go build ./...` is clean and CI on
+  Linux runs the full suite. Still open: #3 (exploration lineage), #5 (multi-worker).
+
 ### 1. Broaden the model backends — S  *(directly serves "plug in your own model")*
 **DONE (OpenAI-compatible).** `internal/planner/llm/openai.go` implements
 `Client` + `SchemaClient` + `Chat` against the OpenAI Chat Completions API — the
