@@ -1,0 +1,31 @@
+title: Known Web Shell URI Access
+id: tyto-blue-0015
+status: experimental
+description: >
+  HTTP request whose URI references a well-known web shell filename or family
+  (c99, r57, b374k, wso, China Chopper, cmd.jsp, shell.php, etc.). Suggests a
+  server-side web shell has been planted and is being operated.
+author: tyto blue
+level: high
+references:
+  - https://attack.mitre.org/techniques/T1505/003/
+tags:
+  - attack.persistence
+  - attack.t1505.003
+logsource:
+  category: proxy
+  service: webserver
+detection:
+  selection:
+    cs-uri|contains:
+      - '/c99.php'
+      - '/r57.php'
+      - '/b374k'
+      - '/wso.php'
+      - '/cmd.jsp'
+      - '/shell.php'
+      - '/shell.aspx'
+      - '/tunnel.jsp'
+      - '/antsword'
+      - '/chopper'
+  condition: selection

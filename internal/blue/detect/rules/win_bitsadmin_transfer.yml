@@ -1,0 +1,23 @@
+title: Bitsadmin Download Transfer
+id: tyto-blue-0004
+status: experimental
+description: >
+  bitsadmin.exe invoked with /transfer (optionally /download) to stage a remote
+  file via the Background Intelligent Transfer Service. Common for stealthy ingress
+  that survives reboots and blends with Windows update traffic.
+author: tyto blue
+level: high
+references:
+  - https://attack.mitre.org/techniques/T1105/
+tags:
+  - attack.command-and-control
+  - attack.t1105
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection_img:
+    Image|endswith: '\bitsadmin.exe'
+  selection_flag:
+    CommandLine|contains: '/transfer'
+  condition: selection_img and selection_flag

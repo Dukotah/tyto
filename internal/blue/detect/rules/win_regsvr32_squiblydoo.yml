@@ -1,0 +1,26 @@
+title: Regsvr32 Remote Scriptlet Execution (Squiblydoo)
+id: tyto-blue-0005
+status: experimental
+description: >
+  regsvr32.exe loading a remote COM scriptlet with /i: and scrobj.dll (the
+  "Squiblydoo" application-whitelisting bypass). Pulling an .sct from http(s) is
+  not a legitimate DLL-registration workflow.
+author: tyto blue
+level: high
+references:
+  - https://attack.mitre.org/techniques/T1218/010/
+tags:
+  - attack.defense-evasion
+  - attack.t1218.010
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection_img:
+    Image|endswith: '\regsvr32.exe'
+  selection_remote:
+    CommandLine|contains:
+      - 'http://'
+      - 'https://'
+      - 'scrobj'
+  condition: selection_img and selection_remote

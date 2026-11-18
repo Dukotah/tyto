@@ -1,0 +1,29 @@
+title: Certutil Remote File Download
+id: tyto-blue-0003
+status: experimental
+description: >
+  certutil.exe used with urlcache/verifyctl plus an HTTP(S) URL to pull a remote
+  payload. certutil is a certificate utility; fetching files over the web with it is
+  a well-known living-off-the-land ingress technique.
+author: tyto blue
+level: high
+references:
+  - https://attack.mitre.org/techniques/T1105/
+tags:
+  - attack.command-and-control
+  - attack.t1105
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection_img:
+    Image|endswith: '\certutil.exe'
+  selection_flags:
+    CommandLine|contains:
+      - 'urlcache'
+      - 'verifyctl'
+  selection_url:
+    CommandLine|contains:
+      - 'http://'
+      - 'https://'
+  condition: selection_img and selection_flags and selection_url

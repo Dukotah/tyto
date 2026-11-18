@@ -1,0 +1,29 @@
+title: Encoded PowerShell Command Line
+id: tyto-blue-0001
+status: experimental
+description: >
+  PowerShell invoked with an encoded command (-enc / -EncodedCommand). Legitimate
+  admin tooling almost never ships base64 payloads on the command line; this is a
+  staple of fileless execution and malware stagers.
+author: tyto blue
+level: high
+references:
+  - https://attack.mitre.org/techniques/T1059/001/
+tags:
+  - attack.execution
+  - attack.t1059.001
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection_img:
+    Image|endswith:
+      - '\powershell.exe'
+      - '\pwsh.exe'
+  selection_enc:
+    CommandLine|contains:
+      - ' -enc '
+      - ' -encodedcommand '
+      - ' -ec '
+      - ' -e '
+  condition: selection_img and selection_enc

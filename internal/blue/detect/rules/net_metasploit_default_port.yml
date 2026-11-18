@@ -1,0 +1,23 @@
+title: Outbound Connection to Common Metasploit Handler Port
+id: tyto-blue-0012
+status: experimental
+description: >
+  Outbound network connection to TCP 4444 / 5555, the default Metasploit/Meterpreter
+  reverse-handler ports. High-signal when seen leaving an endpoint to an external host.
+author: tyto blue
+level: high
+references:
+  - https://attack.mitre.org/techniques/T1571/
+tags:
+  - attack.command-and-control
+  - attack.t1571
+logsource:
+  category: network_connection
+  product: windows
+detection:
+  selection:
+    Class: 'network_activity'
+    DstPort:
+      - '4444'
+      - '5555'
+  condition: selection

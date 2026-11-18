@@ -1,0 +1,26 @@
+title: Mshta Remote or Script Payload Execution
+id: tyto-blue-0006
+status: experimental
+description: >
+  mshta.exe executing a remote HTA or an inline vbscript/javascript payload. mshta
+  is a trusted binary abused to run arbitrary script outside normal browser controls.
+author: tyto blue
+level: high
+references:
+  - https://attack.mitre.org/techniques/T1218/005/
+tags:
+  - attack.defense-evasion
+  - attack.t1218.005
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection_img:
+    Image|endswith: '\mshta.exe'
+  selection_payload:
+    CommandLine|contains:
+      - 'http://'
+      - 'https://'
+      - 'vbscript:'
+      - 'javascript:'
+  condition: selection_img and selection_payload

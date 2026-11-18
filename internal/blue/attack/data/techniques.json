@@ -1,0 +1,422 @@
+[
+  {
+    "id": "T1059",
+    "name": "Command and Scripting Interpreter",
+    "tactics": ["execution"],
+    "description": "Adversaries abuse command and script interpreters to execute commands, scripts, or binaries.",
+    "url": "https://attack.mitre.org/techniques/T1059/"
+  },
+  {
+    "id": "T1059.001",
+    "name": "PowerShell",
+    "tactics": ["execution"],
+    "description": "Adversaries abuse PowerShell for execution of commands and scripts.",
+    "url": "https://attack.mitre.org/techniques/T1059/001/"
+  },
+  {
+    "id": "T1059.003",
+    "name": "Windows Command Shell",
+    "tactics": ["execution"],
+    "description": "Adversaries abuse the Windows command shell (cmd.exe) for execution.",
+    "url": "https://attack.mitre.org/techniques/T1059/003/"
+  },
+  {
+    "id": "T1059.004",
+    "name": "Unix Shell",
+    "tactics": ["execution"],
+    "description": "Adversaries abuse Unix shell commands and scripts for execution.",
+    "url": "https://attack.mitre.org/techniques/T1059/004/"
+  },
+  {
+    "id": "T1047",
+    "name": "Windows Management Instrumentation",
+    "tactics": ["execution"],
+    "description": "Adversaries abuse WMI to execute malicious commands and payloads.",
+    "url": "https://attack.mitre.org/techniques/T1047/"
+  },
+  {
+    "id": "T1053",
+    "name": "Scheduled Task/Job",
+    "tactics": ["execution", "persistence", "privilege-escalation"],
+    "description": "Adversaries abuse task scheduling to execute code, often for persistence.",
+    "url": "https://attack.mitre.org/techniques/T1053/"
+  },
+  {
+    "id": "T1053.005",
+    "name": "Scheduled Task",
+    "tactics": ["execution", "persistence", "privilege-escalation"],
+    "description": "Adversaries abuse the Windows Task Scheduler to run programs on a schedule.",
+    "url": "https://attack.mitre.org/techniques/T1053/005/"
+  },
+  {
+    "id": "T1569",
+    "name": "System Services",
+    "tactics": ["execution"],
+    "description": "Adversaries abuse system services or daemons to execute commands or programs.",
+    "url": "https://attack.mitre.org/techniques/T1569/"
+  },
+  {
+    "id": "T1204",
+    "name": "User Execution",
+    "tactics": ["execution"],
+    "description": "Adversaries rely on a user opening a malicious file or link to gain execution.",
+    "url": "https://attack.mitre.org/techniques/T1204/"
+  },
+  {
+    "id": "T1106",
+    "name": "Native API",
+    "tactics": ["execution"],
+    "description": "Adversaries interact directly with the native OS API to execute behaviors.",
+    "url": "https://attack.mitre.org/techniques/T1106/"
+  },
+  {
+    "id": "T1547",
+    "name": "Boot or Logon Autostart Execution",
+    "tactics": ["persistence", "privilege-escalation"],
+    "description": "Adversaries configure system settings to automatically execute a program at boot or logon.",
+    "url": "https://attack.mitre.org/techniques/T1547/"
+  },
+  {
+    "id": "T1547.001",
+    "name": "Registry Run Keys / Startup Folder",
+    "tactics": ["persistence", "privilege-escalation"],
+    "description": "Adversaries add programs to Registry run keys or the startup folder to persist.",
+    "url": "https://attack.mitre.org/techniques/T1547/001/"
+  },
+  {
+    "id": "T1543",
+    "name": "Create or Modify System Process",
+    "tactics": ["persistence", "privilege-escalation"],
+    "description": "Adversaries create or modify system-level processes to repeatedly execute payloads.",
+    "url": "https://attack.mitre.org/techniques/T1543/"
+  },
+  {
+    "id": "T1543.003",
+    "name": "Windows Service",
+    "tactics": ["persistence", "privilege-escalation"],
+    "description": "Adversaries create or modify Windows services to execute malicious payloads.",
+    "url": "https://attack.mitre.org/techniques/T1543/003/"
+  },
+  {
+    "id": "T1136",
+    "name": "Create Account",
+    "tactics": ["persistence"],
+    "description": "Adversaries create accounts to maintain access to victim systems.",
+    "url": "https://attack.mitre.org/techniques/T1136/"
+  },
+  {
+    "id": "T1098",
+    "name": "Account Manipulation",
+    "tactics": ["persistence", "privilege-escalation"],
+    "description": "Adversaries manipulate accounts to maintain or elevate access to systems.",
+    "url": "https://attack.mitre.org/techniques/T1098/"
+  },
+  {
+    "id": "T1505.003",
+    "name": "Web Shell",
+    "tactics": ["persistence"],
+    "description": "Adversaries plant web shells on servers to maintain persistent remote access.",
+    "url": "https://attack.mitre.org/techniques/T1505/003/"
+  },
+  {
+    "id": "T1548",
+    "name": "Abuse Elevation Control Mechanism",
+    "tactics": ["privilege-escalation", "defense-evasion"],
+    "description": "Adversaries bypass elevation control mechanisms to obtain higher privileges.",
+    "url": "https://attack.mitre.org/techniques/T1548/"
+  },
+  {
+    "id": "T1068",
+    "name": "Exploitation for Privilege Escalation",
+    "tactics": ["privilege-escalation"],
+    "description": "Adversaries exploit software vulnerabilities to elevate privileges.",
+    "url": "https://attack.mitre.org/techniques/T1068/"
+  },
+  {
+    "id": "T1055",
+    "name": "Process Injection",
+    "tactics": ["defense-evasion", "privilege-escalation"],
+    "description": "Adversaries inject code into processes to evade defenses and elevate privileges.",
+    "url": "https://attack.mitre.org/techniques/T1055/"
+  },
+  {
+    "id": "T1070",
+    "name": "Indicator Removal",
+    "tactics": ["defense-evasion"],
+    "description": "Adversaries delete or modify artifacts to remove evidence of their activity.",
+    "url": "https://attack.mitre.org/techniques/T1070/"
+  },
+  {
+    "id": "T1070.004",
+    "name": "File Deletion",
+    "tactics": ["defense-evasion"],
+    "description": "Adversaries delete files they create or use to remove traces of intrusion.",
+    "url": "https://attack.mitre.org/techniques/T1070/004/"
+  },
+  {
+    "id": "T1112",
+    "name": "Modify Registry",
+    "tactics": ["defense-evasion"],
+    "description": "Adversaries modify the Windows Registry to evade defenses or hide configuration.",
+    "url": "https://attack.mitre.org/techniques/T1112/"
+  },
+  {
+    "id": "T1562",
+    "name": "Impair Defenses",
+    "tactics": ["defense-evasion"],
+    "description": "Adversaries disable or modify security tools and logging to avoid detection.",
+    "url": "https://attack.mitre.org/techniques/T1562/"
+  },
+  {
+    "id": "T1562.001",
+    "name": "Disable or Modify Tools",
+    "tactics": ["defense-evasion"],
+    "description": "Adversaries disable or tamper with security software to avoid detection.",
+    "url": "https://attack.mitre.org/techniques/T1562/001/"
+  },
+  {
+    "id": "T1036",
+    "name": "Masquerading",
+    "tactics": ["defense-evasion"],
+    "description": "Adversaries manipulate names or locations of objects to appear legitimate.",
+    "url": "https://attack.mitre.org/techniques/T1036/"
+  },
+  {
+    "id": "T1218",
+    "name": "System Binary Proxy Execution",
+    "tactics": ["defense-evasion"],
+    "description": "Adversaries bypass controls by proxying execution through trusted system binaries.",
+    "url": "https://attack.mitre.org/techniques/T1218/"
+  },
+  {
+    "id": "T1027",
+    "name": "Obfuscated Files or Information",
+    "tactics": ["defense-evasion"],
+    "description": "Adversaries obfuscate files or content to hinder analysis and detection.",
+    "url": "https://attack.mitre.org/techniques/T1027/"
+  },
+  {
+    "id": "T1140",
+    "name": "Deobfuscate/Decode Files or Information",
+    "tactics": ["defense-evasion"],
+    "description": "Adversaries decode or deobfuscate payloads to make them usable at runtime.",
+    "url": "https://attack.mitre.org/techniques/T1140/"
+  },
+  {
+    "id": "T1003",
+    "name": "OS Credential Dumping",
+    "tactics": ["credential-access"],
+    "description": "Adversaries dump credentials from the operating system and software.",
+    "url": "https://attack.mitre.org/techniques/T1003/"
+  },
+  {
+    "id": "T1003.001",
+    "name": "LSASS Memory",
+    "tactics": ["credential-access"],
+    "description": "Adversaries extract credential material from LSASS process memory.",
+    "url": "https://attack.mitre.org/techniques/T1003/001/"
+  },
+  {
+    "id": "T1110",
+    "name": "Brute Force",
+    "tactics": ["credential-access"],
+    "description": "Adversaries guess or crack passwords to gain access to accounts.",
+    "url": "https://attack.mitre.org/techniques/T1110/"
+  },
+  {
+    "id": "T1555",
+    "name": "Credentials from Password Stores",
+    "tactics": ["credential-access"],
+    "description": "Adversaries harvest credentials from password managers and stores.",
+    "url": "https://attack.mitre.org/techniques/T1555/"
+  },
+  {
+    "id": "T1558",
+    "name": "Steal or Forge Kerberos Tickets",
+    "tactics": ["credential-access"],
+    "description": "Adversaries steal or forge Kerberos tickets to authenticate as other users.",
+    "url": "https://attack.mitre.org/techniques/T1558/"
+  },
+  {
+    "id": "T1552",
+    "name": "Unsecured Credentials",
+    "tactics": ["credential-access"],
+    "description": "Adversaries search for credentials stored insecurely across a system.",
+    "url": "https://attack.mitre.org/techniques/T1552/"
+  },
+  {
+    "id": "T1082",
+    "name": "System Information Discovery",
+    "tactics": ["discovery"],
+    "description": "Adversaries gather detailed information about the operating system and hardware.",
+    "url": "https://attack.mitre.org/techniques/T1082/"
+  },
+  {
+    "id": "T1083",
+    "name": "File and Directory Discovery",
+    "tactics": ["discovery"],
+    "description": "Adversaries enumerate files and directories to locate information of interest.",
+    "url": "https://attack.mitre.org/techniques/T1083/"
+  },
+  {
+    "id": "T1057",
+    "name": "Process Discovery",
+    "tactics": ["discovery"],
+    "description": "Adversaries enumerate running processes on a system.",
+    "url": "https://attack.mitre.org/techniques/T1057/"
+  },
+  {
+    "id": "T1018",
+    "name": "Remote System Discovery",
+    "tactics": ["discovery"],
+    "description": "Adversaries enumerate other systems on the network by IP, hostname, or service.",
+    "url": "https://attack.mitre.org/techniques/T1018/"
+  },
+  {
+    "id": "T1016",
+    "name": "System Network Configuration Discovery",
+    "tactics": ["discovery"],
+    "description": "Adversaries gather details about the network configuration of a system.",
+    "url": "https://attack.mitre.org/techniques/T1016/"
+  },
+  {
+    "id": "T1087",
+    "name": "Account Discovery",
+    "tactics": ["discovery"],
+    "description": "Adversaries enumerate accounts on a system or in a domain.",
+    "url": "https://attack.mitre.org/techniques/T1087/"
+  },
+  {
+    "id": "T1021",
+    "name": "Remote Services",
+    "tactics": ["lateral-movement"],
+    "description": "Adversaries use valid accounts over remote services to move laterally.",
+    "url": "https://attack.mitre.org/techniques/T1021/"
+  },
+  {
+    "id": "T1021.001",
+    "name": "Remote Desktop Protocol",
+    "tactics": ["lateral-movement"],
+    "description": "Adversaries use RDP with valid credentials to move laterally between systems.",
+    "url": "https://attack.mitre.org/techniques/T1021/001/"
+  },
+  {
+    "id": "T1570",
+    "name": "Lateral Tool Transfer",
+    "tactics": ["lateral-movement"],
+    "description": "Adversaries transfer tools between systems within a compromised environment.",
+    "url": "https://attack.mitre.org/techniques/T1570/"
+  },
+  {
+    "id": "T1005",
+    "name": "Data from Local System",
+    "tactics": ["collection"],
+    "description": "Adversaries collect data from the local system prior to exfiltration.",
+    "url": "https://attack.mitre.org/techniques/T1005/"
+  },
+  {
+    "id": "T1560",
+    "name": "Archive Collected Data",
+    "tactics": ["collection"],
+    "description": "Adversaries compress or encrypt collected data before exfiltration.",
+    "url": "https://attack.mitre.org/techniques/T1560/"
+  },
+  {
+    "id": "T1071",
+    "name": "Application Layer Protocol",
+    "tactics": ["command-and-control"],
+    "description": "Adversaries communicate using application layer protocols to blend with traffic.",
+    "url": "https://attack.mitre.org/techniques/T1071/"
+  },
+  {
+    "id": "T1071.001",
+    "name": "Web Protocols",
+    "tactics": ["command-and-control"],
+    "description": "Adversaries use HTTP/S protocols for command and control to blend with web traffic.",
+    "url": "https://attack.mitre.org/techniques/T1071/001/"
+  },
+  {
+    "id": "T1105",
+    "name": "Ingress Tool Transfer",
+    "tactics": ["command-and-control"],
+    "description": "Adversaries transfer tools or files from an external system into the environment.",
+    "url": "https://attack.mitre.org/techniques/T1105/"
+  },
+  {
+    "id": "T1573",
+    "name": "Encrypted Channel",
+    "tactics": ["command-and-control"],
+    "description": "Adversaries use encryption to conceal command and control traffic.",
+    "url": "https://attack.mitre.org/techniques/T1573/"
+  },
+  {
+    "id": "T1090",
+    "name": "Proxy",
+    "tactics": ["command-and-control"],
+    "description": "Adversaries use a proxy to route and obscure command and control traffic.",
+    "url": "https://attack.mitre.org/techniques/T1090/"
+  },
+  {
+    "id": "T1041",
+    "name": "Exfiltration Over C2 Channel",
+    "tactics": ["exfiltration"],
+    "description": "Adversaries steal data by exfiltrating it over an existing C2 channel.",
+    "url": "https://attack.mitre.org/techniques/T1041/"
+  },
+  {
+    "id": "T1567",
+    "name": "Exfiltration Over Web Service",
+    "tactics": ["exfiltration"],
+    "description": "Adversaries exfiltrate data to a legitimate external web service.",
+    "url": "https://attack.mitre.org/techniques/T1567/"
+  },
+  {
+    "id": "T1486",
+    "name": "Data Encrypted for Impact",
+    "tactics": ["impact"],
+    "description": "Adversaries encrypt data on target systems to interrupt availability (ransomware).",
+    "url": "https://attack.mitre.org/techniques/T1486/"
+  },
+  {
+    "id": "T1490",
+    "name": "Inhibit System Recovery",
+    "tactics": ["impact"],
+    "description": "Adversaries delete or disable recovery features to prevent system restoration.",
+    "url": "https://attack.mitre.org/techniques/T1490/"
+  },
+  {
+    "id": "T1489",
+    "name": "Service Stop",
+    "tactics": ["impact"],
+    "description": "Adversaries stop or disable services to render systems unusable.",
+    "url": "https://attack.mitre.org/techniques/T1489/"
+  },
+  {
+    "id": "T1078",
+    "name": "Valid Accounts",
+    "tactics": ["defense-evasion", "persistence", "privilege-escalation", "initial-access"],
+    "description": "Adversaries use legitimate credentials to gain and maintain access.",
+    "url": "https://attack.mitre.org/techniques/T1078/"
+  },
+  {
+    "id": "T1190",
+    "name": "Exploit Public-Facing Application",
+    "tactics": ["initial-access"],
+    "description": "Adversaries exploit internet-facing applications to gain initial access.",
+    "url": "https://attack.mitre.org/techniques/T1190/"
+  },
+  {
+    "id": "T1566",
+    "name": "Phishing",
+    "tactics": ["initial-access"],
+    "description": "Adversaries send phishing messages to gain access to victim systems.",
+    "url": "https://attack.mitre.org/techniques/T1566/"
+  },
+  {
+    "id": "T1566.001",
+    "name": "Spearphishing Attachment",
+    "tactics": ["initial-access"],
+    "description": "Adversaries send targeted emails with malicious attachments to gain access.",
+    "url": "https://attack.mitre.org/techniques/T1566/001/"
+  }
+]

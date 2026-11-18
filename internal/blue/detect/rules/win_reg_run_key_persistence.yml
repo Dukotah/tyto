@@ -1,0 +1,26 @@
+title: Run Key Persistence via Reg.exe
+id: tyto-blue-0011
+status: experimental
+description: >
+  reg.exe adding a value under a CurrentVersion\Run / RunOnce autostart key. A
+  frequent, low-effort persistence mechanism that survives logon.
+author: tyto blue
+level: medium
+references:
+  - https://attack.mitre.org/techniques/T1547/001/
+tags:
+  - attack.persistence
+  - attack.t1547.001
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection_img:
+    Image|endswith: '\reg.exe'
+  selection_add:
+    CommandLine|contains: 'add'
+  selection_key:
+    CommandLine|contains:
+      - '\currentversion\run'
+      - '\currentversion\runonce'
+  condition: selection_img and selection_add and selection_key

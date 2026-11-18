@@ -1,0 +1,26 @@
+title: Outbound Connection to Tor / SOCKS Proxy Port
+id: tyto-blue-0013
+status: experimental
+description: >
+  Outbound connection to well-known Tor and SOCKS proxy ports (9001, 9030, 9050,
+  9150, 1080). Indicative of multi-hop proxying used to anonymize C2 or exfiltration.
+author: tyto blue
+level: medium
+references:
+  - https://attack.mitre.org/techniques/T1090/003/
+tags:
+  - attack.command-and-control
+  - attack.t1090.003
+logsource:
+  category: network_connection
+  product: windows
+detection:
+  selection:
+    Class: 'network_activity'
+    DstPort:
+      - '9001'
+      - '9030'
+      - '9050'
+      - '9150'
+      - '1080'
+  condition: selection

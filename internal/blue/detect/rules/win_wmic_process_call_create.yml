@@ -1,0 +1,25 @@
+title: WMIC Process Call Create
+id: tyto-blue-0007
+status: experimental
+description: >
+  wmic.exe used to launch a process via "process call create", frequently for local
+  or remote (/node:) execution and lateral movement. Rare in interactive admin use.
+author: tyto blue
+level: medium
+references:
+  - https://attack.mitre.org/techniques/T1047/
+tags:
+  - attack.execution
+  - attack.t1047
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection_img:
+    Image|endswith: '\wmic.exe'
+  selection_all:
+    CommandLine|contains|all:
+      - 'process'
+      - 'call'
+      - 'create'
+  condition: selection_img and selection_all

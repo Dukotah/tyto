@@ -1,0 +1,34 @@
+title: Office Application Spawning Command Shell
+id: tyto-blue-0002
+status: experimental
+description: >
+  A Microsoft Office application (Word, Excel, PowerPoint, Outlook) spawning cmd.exe,
+  powershell.exe, wscript or cscript. This is the classic macro / malicious-document
+  execution chain and is extremely rare in benign use.
+author: tyto blue
+level: high
+references:
+  - https://attack.mitre.org/techniques/T1059/003/
+tags:
+  - attack.execution
+  - attack.t1059.003
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection_parent:
+    ParentImage|endswith:
+      - '\winword.exe'
+      - '\excel.exe'
+      - '\powerpnt.exe'
+      - '\outlook.exe'
+      - '\mspub.exe'
+  selection_child:
+    Image|endswith:
+      - '\cmd.exe'
+      - '\powershell.exe'
+      - '\pwsh.exe'
+      - '\wscript.exe'
+      - '\cscript.exe'
+      - '\mshta.exe'
+  condition: selection_parent and selection_child

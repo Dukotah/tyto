@@ -1,0 +1,26 @@
+title: Local Account Creation via Net
+id: tyto-blue-0009
+status: experimental
+description: >
+  net.exe / net1.exe creating a user account (user ... /add). Attackers add local
+  accounts for persistence and follow-on access after initial compromise.
+author: tyto blue
+level: medium
+references:
+  - https://attack.mitre.org/techniques/T1136/001/
+tags:
+  - attack.persistence
+  - attack.t1136.001
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection_img:
+    Image|endswith:
+      - '\net.exe'
+      - '\net1.exe'
+  selection_all:
+    CommandLine|contains|all:
+      - 'user'
+      - '/add'
+  condition: selection_img and selection_all

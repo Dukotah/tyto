@@ -1,0 +1,30 @@
+title: Web Vulnerability Scanner User Agent
+id: tyto-blue-0014
+status: experimental
+description: >
+  HTTP request carrying the default User-Agent of a known offensive scanner
+  (sqlmap, nikto, nmap NSE, masscan, wpscan, acunetix, nuclei, dirbuster, gobuster).
+  Strong indicator of active scanning / reconnaissance against a web asset.
+author: tyto blue
+level: medium
+references:
+  - https://attack.mitre.org/techniques/T1595/002/
+tags:
+  - attack.reconnaissance
+  - attack.t1595.002
+logsource:
+  category: proxy
+  service: webserver
+detection:
+  selection:
+    c-useragent|contains:
+      - 'sqlmap'
+      - 'nikto'
+      - 'nmap'
+      - 'masscan'
+      - 'wpscan'
+      - 'acunetix'
+      - 'nuclei'
+      - 'dirbuster'
+      - 'gobuster'
+  condition: selection

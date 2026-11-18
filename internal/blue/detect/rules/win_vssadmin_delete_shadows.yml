@@ -1,0 +1,26 @@
+title: Shadow Copy Deletion via Vssadmin
+id: tyto-blue-0008
+status: experimental
+description: >
+  vssadmin.exe (or wmic shadowcopy) deleting volume shadow copies. This destroys
+  local recovery points and is a hallmark of ransomware preparing for encryption.
+author: tyto blue
+level: critical
+references:
+  - https://attack.mitre.org/techniques/T1490/
+tags:
+  - attack.impact
+  - attack.t1490
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection_img:
+    Image|endswith:
+      - '\vssadmin.exe'
+      - '\wmic.exe'
+  selection_all:
+    CommandLine|contains|all:
+      - 'delete'
+      - 'shadow'
+  condition: selection_img and selection_all
