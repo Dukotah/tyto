@@ -1,0 +1,47 @@
+# ENGAGEMENT TEMPLATE — copy to <client>.engagement.yaml per job and fill in.
+# The guard ENFORCES this file; the operator (model) reads it as context.
+# The scope you load IS the authorization. Nothing outside it can be fired at,
+# no matter what the model proposes. Keep a signed copy of the real authorization
+# (SOW / bug-bounty program page / written permission) alongside this file.
+
+id: CLIENT-0001                       # your internal engagement id
+client: Example Corp
+description: Authorized assessment of <what> for <client>.
+
+objectives:
+  - Enumerate the attack surface and fingerprint the stack.
+  - Surface exposed secrets, misconfiguration, and missing security controls.
+  - Confirm exploit-class issues by direct observation (only if in categories below).
+  - Produce a client-style report with validated findings and severities.
+
+authorization:
+  # mode: client-signed  -> a real client authorized this; keep the signed grant.
+  # mode: self-attested  -> you own the asset (labs, your own infra).
+  authorized_by: <name / org that authorized this>
+  authorized_on: 2026-01-01
+  agreement_ref: <SOW ref / bug-bounty program URL / "self-owned">
+  mode: client-signed
+
+scope:
+  in_scope:
+    - { type: domain, value: app.example.com }
+    # - { type: url,    value: https://app.example.com }
+    # - { type: ip,     value: 203.0.113.10 }
+  out_of_scope:
+    - { type: domain, value: billing.example.com }   # explicit carve-outs
+
+rules_of_engagement:
+  # max_risk is the CEILING — the guard denies anything above it.
+  # passive < low < medium < high. Start as low as the job allows.
+  max_risk: medium
+  allowed_categories:
+    - recon
+    - scan
+    # - exploit        # uncomment only with authorization covering exploitation
+  forbidden_categories:
+    - post-exploit
+    - identity
+    - dos
+  time_windows: []                   # e.g. ["2026-01-10T00:00:00Z/2026-01-17T00:00:00Z"]
+  max_requests_per_second: 8         # be a good neighbor; raise only for labs
+  max_concurrent_actions: 4
