@@ -1,0 +1,32 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
+  "name": "io.github.dukotah/tyto",
+  "description": "AI-orchestrated penetration testing over MCP: a frontier model drives a 55-tool arsenal while a deterministic Scope Guard gates every action and a tamper-evident audit log records it. Authorized testing only.",
+  "version": "0.2.0",
+  "repository": {
+    "url": "https://github.com/Dukotah/tyto",
+    "source": "github"
+  },
+  "websiteUrl": "https://github.com/Dukotah/tyto",
+  "packages": [
+    {
+      "registryType": "source",
+      "identifier": "github.com/Dukotah/tyto",
+      "transport": { "type": "stdio" },
+      "runtimeHint": "Build the Go binary (go build ./cmd/tyto), then run: tyto mcp --engagement <file>. Requires a loaded engagement; the guard denies out-of-scope and over-ceiling actions.",
+      "environmentVariables": []
+    }
+  ],
+  "_meta": {
+    "note": "DRAFT manifest for the MCP registry / awesome-mcp submission. Submission requires the repository to be public. tyto is distributed as a source build, not a published package.",
+    "tools": [
+      "tyto_scope",
+      "tyto_list_tools",
+      "tyto_execute",
+      "tyto_kali",
+      "tyto_findings",
+      "tyto_report"
+    ],
+    "categories": ["security", "penetration-testing", "offensive-security"]
+  }
+}

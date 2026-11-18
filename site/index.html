@@ -1,5 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="claude:viewport-fit-sides" content="cover">
-<title>tyto</title>
+<title>tyto — AI-orchestrated penetration testing over MCP</title>
+<meta name="description" content="tyto is an MCP server that puts a frontier model (Claude Code / Opus) in the operator seat of a 55-tool pentest arsenal — while a deterministic Scope Guard it cannot override gates every action and a tamper-evident audit log records it. Authorized testing only.">
+<meta name="keywords" content="MCP server, penetration testing, AI pentest, Model Context Protocol, Claude Code, offensive security, scope guard, authorized testing, security tooling, agentic">
+<link rel="canonical" href="https://github.com/Dukotah/tyto">
+<meta property="og:type" content="website">
+<meta property="og:title" content="tyto — AI-orchestrated penetration testing over MCP">
+<meta property="og:description" content="Put a frontier model in the operator seat of a 55-tool pentest arsenal. A deterministic Scope Guard gates every action; a tamper-evident audit log proves what ran. Authorized testing only.">
+<meta property="og:url" content="https://github.com/Dukotah/tyto">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="tyto — AI-orchestrated penetration testing over MCP">
+<meta name="twitter:description" content="Put a frontier model in the operator seat of a guarded, auditable 55-tool pentest arsenal. Authorized testing only.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   /* Layout: a dark operator's console — owl-as-reticle hero, a plan→guard→act
      loop, the guard's verdicts, the arsenal. Deliberate single-dark world. */
@@ -100,6 +118,8 @@
   @media(max-width:720px){.cols-3,.cols-2{grid-template-columns:1fr}}
   @media(prefers-reduced-motion:no-preference){.pulse{animation:p 3.2s ease-in-out infinite}@keyframes p{0%,100%{opacity:.35}50%{opacity:1}}}
 </style>
+</head>
+<body>
 
 <header class="hero"><div class="wrap">
   <!-- owl face as a targeting reticle -->
@@ -117,8 +137,9 @@
   <p class="tag">AI-orchestrated penetration testing for targets you're authorized to touch.</p>
   <p class="law">The AI is the strategist. <b>The guard is the law.</b></p>
   <div class="cta">
-    <a class="btn p" href="#loop">How it works</a>
-    <a class="btn" href="#arsenal">The arsenal</a>
+    <a class="btn p" href="https://github.com/Dukotah/tyto">View on GitHub</a>
+    <a class="btn" href="#install">Install</a>
+    <a class="btn" href="#loop">How it works</a>
     <a class="btn" href="#operator">Put Opus in the seat</a>
   </div>
 </div></header>
@@ -220,8 +241,36 @@
     <div class="card"><div class="k">Default</div><h3>Local model, air-gapped</h3><p>A local planner drives the loop with no cloud calls — the whole engagement reasons on your own hardware, offline.</p></div>
     <div class="card"><div class="k">tyto mcp</div><h3>Opus as operator, over MCP</h3><p>Expose the arsenal over the Model Context Protocol and an external agent becomes the operator — while every call still routes through the same guard, approval gate and audit log. Full access never means bypass scope.</p></div>
   </div>
-  <pre style="margin-top:16px"><span class="c"># hand the arsenal to Claude Code</span>
-claude mcp add tyto -- tyto mcp --engagement engagement.yaml</pre>
+  <pre style="margin-top:16px"><span class="c"># hand the arsenal to Claude Code (user scope = available everywhere)</span>
+claude mcp add tyto <span class="key">-s user</span> -- tyto mcp --engagement <span class="str">engagement.yaml</span></pre>
+  <p class="lead" style="margin-top:22px">Six tools, each routed through the same guard, approval gate and audit log:</p>
+  <div class="arsenal" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))">
+    <div class="tool">tyto_scope</div><div class="tool">tyto_list_tools</div><div class="tool">tyto_execute</div>
+    <div class="tool">tyto_kali</div><div class="tool">tyto_findings</div><div class="tool">tyto_report</div>
+  </div>
+</div></section>
+
+<section id="install" style="background:#0c1016;border-block:1px solid var(--line)"><div class="wrap">
+  <p class="eyebrow">Get it running</p>
+  <h2>From clone to operator in four steps</h2>
+  <p class="lead">tyto is a single Go binary with no runtime dependencies. Build it, register it as an MCP server, point it at an engagement, and drive.</p>
+  <pre style="margin-top:24px"><span class="c"># 1. build the binary</span>
+git clone https://github.com/Dukotah/tyto &amp;&amp; cd tyto
+go build -o ~/.local/bin/tyto ./cmd/tyto
+
+<span class="c"># 2. describe the job — copy the template, fill in scope + authorization</span>
+cp engagement.template.yaml myjob.engagement.yaml
+
+<span class="c"># 3. register the server at user scope, pointed at the engagement</span>
+claude mcp add tyto <span class="key">-s user</span> -- ~/.local/bin/tyto mcp \
+  --engagement "$PWD/myjob.engagement.yaml"
+
+<span class="c"># 4. restart the agent host so it loads the tools, then: "scope?" to confirm</span></pre>
+  <div class="grid cols-3" style="margin-top:24px">
+    <div class="card"><div class="k">Scope swap</div><h3>One engagement per job</h3><p>The engagement's risk ceiling is what unlocks exploit tools and mutating Kali commands. Swap the file and restart to change jobs.</p></div>
+    <div class="card"><div class="k">Operator runbook</div><h3>Run it right</h3><p>Execute through tyto, keep loot in the audit trail, load authorization first. See <a href="https://github.com/Dukotah/tyto/blob/main/docs/OPERATING.md" style="color:var(--amber)">docs/OPERATING.md</a>.</p></div>
+    <div class="card"><div class="k">Deep dive</div><h3>How the MCP server works</h3><p>Handshake, tool schemas, the guard path. See <a href="https://github.com/Dukotah/tyto/blob/main/docs/MCP.md" style="color:var(--amber)">docs/MCP.md</a>.</p></div>
+  </div>
 </div></section>
 
 <section id="ethics"><div class="wrap">
@@ -232,3 +281,6 @@ claude mcp add tyto -- tyto mcp --engagement engagement.yaml</pre>
   <span class="mono">tyto · <span style="color:var(--amber)">tyto alba</span>, the barn owl — a quiet, precise, nocturnal hunter</span>
   <span class="mono">plan → guard → act → observe → re-plan</span>
 </div></footer>
+
+</body>
+</html>
