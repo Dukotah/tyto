@@ -35,6 +35,7 @@ type runOptions struct {
 	plannerKind  string
 	model        string
 	ollamaURL    string
+	llmBaseURL   string
 	cycles       int
 	auditPath    string
 	noReport     bool
@@ -63,9 +64,10 @@ func newRunCmd() *cobra.Command {
 	f := cmd.Flags()
 	f.StringVar(&o.engPath, "engagement", "", "path to engagement YAML (required)")
 	f.BoolVar(&o.dryRun, "dry-run", false, "plan and guard only; never execute tools")
-	f.StringVar(&o.plannerKind, "planner", "", "planner backend: ollama|scripted|mock (default: ollama, or mock with --dry-run)")
-	f.StringVar(&o.model, "model", "", "ollama model name (default: auto-detected from RAM)")
+	f.StringVar(&o.plannerKind, "planner", "", "planner backend: ollama|openai|scripted|mock (default: ollama, or mock with --dry-run)")
+	f.StringVar(&o.model, "model", "", "model name (ollama: auto-detected from RAM; openai: required, e.g. gpt-4o-mini)")
 	f.StringVar(&o.ollamaURL, "ollama-url", "http://localhost:11434", "ollama base URL")
+	f.StringVar(&o.llmBaseURL, "llm-base-url", "", "OpenAI-compatible API base URL for --planner openai (default https://api.openai.com/v1; e.g. http://localhost:1234/v1 for LM Studio/vLLM). API key read from TYTO_LLM_API_KEY or OPENAI_API_KEY.")
 	f.IntVar(&o.cycles, "cycles", 3, "max plan/act cycles (loop halts early on no progress)")
 	f.StringVar(&o.auditPath, "audit", "", "audit log path (default: <engagement-id>.audit.jsonl)")
 	f.BoolVar(&o.noReport, "no-report", false, "skip printing the report at the end")
@@ -141,8 +143,18 @@ func (o *runOptions) run(cmd *cobra.Command, _ []string) error {
 			fmt.Fprintf(out, "model: %s\n", choice)
 		}
 		client = llm.NewOllama(o.ollamaURL, m)
+	case "openai":
+		if o.model == "" {
+			return fmt.Errorf("--planner openai requires --model (e.g. gpt-4o-mini, or the model name your server exposes)")
+		}
+		apiKey := os.Getenv("TYTO_LLM_API_KEY")
+		if apiKey == "" {
+			apiKey = os.Getenv("OPENAI_API_KEY")
+		}
+		client = llm.NewOpenAI(o.llmBaseURL, o.model, apiKey)
+		fmt.Fprintf(out, "model: %s (OpenAI-compatible)\n", o.model)
 	default:
-		return fmt.Errorf("unknown planner backend %q (want ollama|mock)", kind)
+		return fmt.Errorf("unknown planner backend %q (want ollama|openai|scripted|mock)", kind)
 	}
 
 	ap := o.auditPath

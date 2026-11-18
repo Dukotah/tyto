@@ -30,13 +30,26 @@ Read their concepts, then build tyto's own version.
 Sized S / M / L. Sequenced so each lands value independently.
 
 ### 1. Broaden the model backends — S  *(directly serves "plug in your own model")*
-Implement `llm.Client` for an **OpenAI-compatible** endpoint (covers OpenAI,
-Groq, together, LM Studio, vLLM, most local servers) and **Anthropic Messages**.
-Add a `SchemaClient` path where the provider supports structured output / tool
-JSON. Config: pick backend + base URL + key + model in the engagement or a
-`--model` flag. Net effect: any model, local or hosted, with zero code changes
-for the user.
-- Touches: `internal/planner/llm/` (new files beside `ollama.go`), config wiring.
+**DONE (OpenAI-compatible).** `internal/planner/llm/openai.go` implements
+`Client` + `SchemaClient` + `Chat` against the OpenAI Chat Completions API — the
+de-facto standard, so one backend covers OpenAI, Groq, Together, Mistral,
+OpenRouter **and every local server** (LM Studio, vLLM, llama.cpp, Ollama's /v1).
+Wired into `tyto run` and the serve console.
+
+```bash
+# hosted
+export OPENAI_API_KEY=sk-...
+tyto run --engagement e.yaml --planner openai --model gpt-4o-mini
+
+# local, air-gapped (LM Studio / vLLM) — no key needed
+tyto run --engagement e.yaml --planner openai \
+  --model my-local-model --llm-base-url http://localhost:1234/v1
+```
+
+*Remaining (optional):* a dedicated **Anthropic Messages** backend. The OpenAI
+backend already reaches Claude via any OpenAI-compatible gateway, and Opus runs
+natively over `tyto mcp`, so this is low priority.
+- Touched: `internal/planner/llm/openai.go` (+test), `cmd/tyto/run.go`, `cmd/tyto/serve.go`.
 
 ### 2. Normalized asset graph + coverage — M
 Upgrade the flat asset list in `internal/state` to a deduplicated hierarchy

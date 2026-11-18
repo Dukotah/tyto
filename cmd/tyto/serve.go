@@ -448,8 +448,18 @@ func (c *console) plannerClient(req runReq, eng *engagement.Engagement) (llm.Cli
 		return llm.NewScriptedMock(targets), nil
 	case "ollama":
 		return llm.NewOllama(c.ollamaURL, c.resolveModel()), nil
+	case "openai":
+		m := c.resolveModel()
+		if m == "" {
+			return nil, fmt.Errorf("openai planner requires a model name")
+		}
+		apiKey := os.Getenv("TYTO_LLM_API_KEY")
+		if apiKey == "" {
+			apiKey = os.Getenv("OPENAI_API_KEY")
+		}
+		return llm.NewOpenAI(os.Getenv("TYTO_LLM_BASE_URL"), m, apiKey), nil
 	default:
-		return nil, fmt.Errorf("unknown planner %q (want scripted|mock|ollama)", kind)
+		return nil, fmt.Errorf("unknown planner %q (want scripted|mock|ollama|openai)", kind)
 	}
 }
 
