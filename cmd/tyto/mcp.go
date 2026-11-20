@@ -366,7 +366,7 @@ func (s *mcpServer) execAction(ctx context.Context, toolName, target string, par
 	a := action.Action{
 		ID:        id,
 		Tool:      toolName,
-		Category:  string(t.Category()),
+		Category:  t.Category().String(),
 		Target:    target,
 		Params:    params,
 		Risk:      t.MaxRisk(),
