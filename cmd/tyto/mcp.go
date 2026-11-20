@@ -271,6 +271,11 @@ func toolManifest() []map[string]any {
 			"inputSchema": map[string]any{"type": "object", "properties": map[string]any{}},
 		},
 		{
+			"name":        "tyto_methodology",
+			"description": "Your governed, full-scope PLAYBOOK. Returns the ranked technique frontier for the assets discovered so far — grouped by phase (recon → scanning → vuln-analysis → exploitation), each bound to a concrete in-scope target and marked done/to-do from live coverage — plus the internal-network / Active-Directory / post-exploitation phases driven through the arsenal. Call this to decide what to do next and to confirm no phase is left untested before tyto_report. Read-only.",
+			"inputSchema": map[string]any{"type": "object", "properties": map[string]any{}},
+		},
+		{
 			"name":        "tyto_execute",
 			"description": "Run one arsenal tool against an in-scope target. Every call passes the Scope Guard (scope/risk/category/time/auth) before running. Returns the tool output plus any findings, assets, and credentials discovered. If the guard requires approval, it returns BLOCKED — re-call with approve=true once the human has authorized.",
 			"inputSchema": map[string]any{
@@ -329,6 +334,8 @@ func (s *mcpServer) handleToolCall(ctx context.Context, req rpcRequest, w *bufio
 		s.reply(w, req.ID, textResult(false, s.scopeText()))
 	case "tyto_list_tools":
 		s.reply(w, req.ID, textResult(false, s.listToolsText()))
+	case "tyto_methodology":
+		s.reply(w, req.ID, textResult(false, s.methodologyText()))
 	case "tyto_findings":
 		s.reply(w, req.ID, textResult(false, s.findingsText()))
 	case "tyto_report":
@@ -419,6 +426,10 @@ func (s *mcpServer) execAction(ctx context.Context, toolName, target string, par
 		_ = s.audit.Record("result", map[string]any{"action": id, "success": false, "error": err.Error(), "source": "mcp"})
 		return fmt.Sprintf("tool %q errored: %v", toolName, err), true
 	}
+
+	// Record action coverage (mirrors engine.commit) so tyto_methodology can
+	// report what's been tested vs untested across an MCP-driven run.
+	s.state.AddCoverage(state.CoverageAnchor{AssetRef: target, Kind: state.CoverageAction, Ref: toolName})
 
 	// 4. Fold results into shared state (the agent's persistent memory).
 	var newFindings, newAssets, newCreds int
