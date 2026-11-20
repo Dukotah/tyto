@@ -20,6 +20,26 @@ reporting are frontier-grade). So:
   which breaks the old "fully offline / no egress" wedge. Mitigation on the
   roadmap: egress controls + tool-output redaction in MCP mode.
 
+**Full-scope coverage plan (web + internal + AD = "the whole works").** The
+arsenal is already broad (56 tools; strong web, plus netsweep/portscan/nmap and
+nxc-backed smbenum/ldapenum/kerberoast). The real gaps are (a) the methodology
+tree was web-only with no post-ex/AD phases, and (b) the brain couldn't see the
+methodology over MCP. Sequence:
+- ✅ **MCP methodology bridge — DONE** (`tyto_methodology`, 2026-11-20). The driving
+  model now gets the ranked, coverage-aware frontier by PTES phase **plus** the
+  full-scope internal/AD/post-ex playbook (native tools where they exist, else
+  `tyto_kali`, all gated+audited). This alone makes tyto drive the whole kill chain.
+- ⬜ **Native internal/AD offense in Go** (highest-value gap, confirmed absent):
+  BloodHound-style AD path collection+analysis, NTLM relay/poisoning detection,
+  credential dumping (secretsdump/DCSync), lateral movement (psexec/wmiexec/winrm),
+  privilege-escalation checks, pivoting/SOCKS. Today these run only via `tyto_kali`.
+  Promote the high-value ones to first-class builtins (adapter-backed, graceful
+  degrade) so they're guard-classified, ranked, and coverage-tracked — not opaque
+  shell commands. Benchmark target: solve GOAD (Game of Active Directory).
+- ⬜ **Post-ex/AD technique nodes in the catalog**, triggered on internal assets +
+  recovered credentials (needs Recommend to consider credential state, not just
+  assets), so the frontier itself walks the internal phases.
+
 **New #0 priority — MCP ↔ console unification.** Today `tyto mcp` and `tyto serve`
 are separate: when a frontier model drives over MCP you can't watch or approve in
 the console, and the MCP `approve=true` is a flag the agent sets itself. With the
