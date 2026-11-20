@@ -1,10 +1,41 @@
 # tyto v2 — capability roadmap
 
-Goal: make tyto *far* more capable as an autonomous pentest engine, while keeping
-its defining properties — **bring-your-own-model**, single Go binary, guard-first,
-fully auditable. Not a rewrite: every item below is an additive layer on the
-engine that already exists (`internal/engine`, `internal/state`, `internal/planner`,
-`internal/guard`, `internal/sqlstore`).
+## Identity & direction (2026-11-20 pivot → MCP-first)
+
+**What tyto is now:** the **governed operator any AI brain plugs into** — the body,
+the law, and the record, not the brain. A frontier model (Claude / Opus over MCP)
+is the default strategist; tyto owns the Scope Guard, the human-approval console,
+and the tamper-evident audit. The moat is the harness, not the model.
+
+**Why the pivot:** a local model small enough for consumer hardware can't reliably
+drive an *accurate* pentest (judgment, false-positive discipline, client-ready
+reporting are frontier-grade). So:
+
+- **MCP is the headline and the default.** `tyto mcp` + a frontier agent is the
+  path we build and document for.
+- **Local model → experimental.** The built-in Ollama/OpenAI planner stays for
+  air-gapped / sensitive engagements, flagged experimental, out of the main
+  quickstart. Not deleted — it's the offline-fallback brain.
+- **Cost we accept & mitigate:** MCP sends engagement context to a cloud model,
+  which breaks the old "fully offline / no egress" wedge. Mitigation on the
+  roadmap: egress controls + tool-output redaction in MCP mode.
+
+**New #0 priority — MCP ↔ console unification.** Today `tyto mcp` and `tyto serve`
+are separate: when a frontier model drives over MCP you can't watch or approve in
+the console, and the MCP `approve=true` is a flag the agent sets itself. With the
+brain now a powerful cloud model, the human-in-the-loop console *is* the control
+surface and the safety story. Unify them so every MCP action streams to the console
+live feed and every gated action blocks on a real human click (or an approval in the
+terminal MCP client). Both control surfaces — web console and terminal — are
+first-class. **This supersedes the "no full console" line below.**
+
+---
+
+Goal (capability track, still valid): make tyto *far* more capable as a pentest
+engine, while keeping its defining properties — **bring-your-own-model**, single Go
+binary, guard-first, fully auditable. Not a rewrite: every item below is an additive
+layer on the engine that already exists (`internal/engine`, `internal/state`,
+`internal/planner`, `internal/guard`, `internal/sqlstore`).
 
 ## Ground rule: clean-room only
 
@@ -116,8 +147,10 @@ default.
 - Touches: `internal/engine`, `internal/planner/prompt.go`, `internal/guard`.
 
 ### Explicitly out of scope for v2
-- A full Next.js console (ARTEX ships 217 files of UI). Keep tyto's minimal serve
-  mode; a heavy web app fights the single-binary identity.
+- A full Next.js console (ARTEX ships 217 files of UI). The console grows to be the
+  real control surface (the #0 MCP↔console unification above), but stays a
+  **served-from-the-binary** page — we don't adopt a heavy SPA build that fights the
+  single-binary identity.
 - Multi-provider parallel rotation/failover — single chosen backend per run is the
   BYO-model design; item 1 already lets users pick any model.
 
