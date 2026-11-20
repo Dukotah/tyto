@@ -108,6 +108,10 @@ the methodology task-tree, and SARIF/PDF reports. See
 # build
 make build
 
+# check your environment: what's ready, what's optional, and how to fix each gap
+# (read-only — installs nothing, touches no targets)
+./bin/tyto doctor
+
 # validate an engagement file (no actions taken)
 ./bin/tyto engagement validate configs/engagement.example.yaml
 
