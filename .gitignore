@@ -17,6 +17,8 @@ coverage.*
 /reports/
 *.engagement.yaml
 !configs/*.example.yaml
+# committed loopback demo — the quickstart target, loopback-only, no client data:
+!configs/localhost.engagement.yaml
 # self-owned CTF fixture, no real client data:
 !proving-ground/*.engagement.yaml
 
@@ -47,3 +49,6 @@ vendor/
 /.gotmp/
 
 .claude/worktrees/
+
+# Engagement run state (resumable checkpoints written to the working dir)
+*.state.json
