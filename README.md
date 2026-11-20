@@ -115,9 +115,10 @@ fail-closed audit log**. High-risk/exploit actions require human approval (and/o
 client **Ed25519 authorization**). Reports export as grouped Markdown or JSON.
 
 **Pivot in progress (MCP-first).** tyto is being reframed as the governed body any
-AI brain drives; the near-term work is unifying `tyto mcp` with the `serve` console
-so a human can watch and approve while a frontier model operates. See
-[docs/ROADMAP-V2.md](docs/ROADMAP-V2.md).
+AI brain drives. The full plan to a senior-pentester-level v1.0 — milestones,
+acceptance gates, and benchmarks (GOAD, PortSwigger, Juice Shop) — is in
+**[docs/ROADMAP-V1.md](docs/ROADMAP-V1.md)**. See also
+[docs/ROADMAP-V2.md](docs/ROADMAP-V2.md) for the MCP-first capability track.
 
 ## Quick start
 
