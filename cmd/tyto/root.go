@@ -20,6 +20,7 @@ func newRootCmd() *cobra.Command {
 	}
 	root.SetVersionTemplate("tyto {{.Version}}\n")
 	root.AddCommand(
+		newDoctorCmd(),
 		newRunCmd(),
 		newHuntCmd(),
 		newEngagementCmd(),

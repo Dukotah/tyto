@@ -1,0 +1,57 @@
+# Localhost demo engagement — safe, self-contained, committed on purpose.
+#
+# This is the quickstart target referenced by the README and docs. It scopes tyto
+# to YOUR OWN loopback interface only (127.0.0.1), so you can watch the full
+# ship line — portscan → httpprobe → webcheck → report — against a throwaway
+# local server without touching anything you don't own.
+#
+# Pair it with a local web server for the web checks to hit, e.g.:
+#     python -m http.server 8080
+# then, in another terminal:
+#     tyto run --engagement configs/localhost.engagement.yaml --planner scripted \
+#         --report-format md --report-out report.md
+#
+# Authorization is self-attested: on your own loopback you ARE the authorizing
+# party. The Scope Guard still enforces every line below — nothing outside
+# 127.0.0.1 is reachable from this engagement.
+
+id: ENG-LOCALHOST
+client: Self (loopback demo)
+description: Local ship-line demo against the operator's own 127.0.0.1 interface.
+
+objectives:
+  - Fingerprint locally exposed HTTP services on the loopback interface.
+  - Run the safe passive web-hardening checks and produce a client-ready report.
+
+authorization:
+  # On your own loopback, you are the authorizing party. This is the same
+  # self-attestation mode used for bug-bounty / self-directed testing.
+  mode: self-attested
+  authorized_by: Operator (self, localhost demo)
+  authorized_on: 2026-01-01
+  agreement_ref: localhost-demo (no external party; loopback only)
+  emergency_contact: n/a — loopback only
+
+scope:
+  in_scope:
+    - type: ip
+      value: 127.0.0.1
+    - type: url
+      value: http://127.0.0.1:8080/
+  out_of_scope: []
+
+rules_of_engagement:
+  # Passive/low only — the demo never needs anything heavier, and the guard
+  # will deny any exploit/high action regardless.
+  max_risk: low
+  allowed_categories:
+    - recon
+    - scan
+  forbidden_categories:
+    - exploit
+    - post-exploit
+    - identity
+    - dos
+  time_windows: []
+  max_requests_per_second: 20
+  max_concurrent_actions: 4
