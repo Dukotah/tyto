@@ -1,15 +1,15 @@
 {
-  "generated": "2026-11-22T02:59:52Z",
+  "generated": "2026-11-22T03:02:26Z",
   "planner": "scripted",
   "runner": "wsl",
   "target": "lab-vulnapp (Northwind), 127.0.0.1:8080",
   "totals": {
     "classes": 15,
-    "found": 14,
-    "validated": 14,
-    "coverage_pct": 93.3,
-    "validated_pct": 93.3,
-    "raw_findings": 70,
+    "found": 15,
+    "validated": 15,
+    "coverage_pct": 100.0,
+    "validated_pct": 100.0,
+    "raw_findings": 71,
     "unmatched_findings": 38
   },
   "chain_depth": 3,
@@ -116,8 +116,8 @@
       "id": "admin-creds-comment",
       "name": "Admin creds in HTML comment",
       "severity": "high",
-      "found": false,
-      "validated": false
+      "found": true,
+      "validated": true
     }
   ]
 }

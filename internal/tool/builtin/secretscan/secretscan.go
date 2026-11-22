@@ -83,6 +83,16 @@ var patterns = []pattern{
 		title:    "Possible hardcoded secret",
 		generic:  true,
 	},
+	{
+		// Credential PAIRS (admin:Password123!, root=hunter2) — commonly left in
+		// HTML comments, config snippets and debug output. Keyword-gated to the
+		// account side so JSON like "user":"guest" (quote after the key, not a
+		// separator) does not match, and the value must be a 6+ char token.
+		name:     "exposed credential pair",
+		re:       regexp.MustCompile(`(?i)\b(?:administrator|admin|username|user|login|root)\s*[:=]\s*\S{6,40}`),
+		severity: state.SeverityHigh,
+		title:    "Exposed credentials",
+	},
 }
 
 var scriptSrcRe = regexp.MustCompile(`(?i)<script[^>]+src\s*=\s*["']([^"']+)["']`)
