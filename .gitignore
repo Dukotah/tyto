@@ -47,3 +47,9 @@ vendor/
 /.gotmp/
 
 .claude/worktrees/
+
+# capability benchmark work dir (rebuilt binary, per-run report/audit)
+proving-ground/.bench/
+
+# benchmark run state snapshots (repo-root default path)
+LAB-*.state.json

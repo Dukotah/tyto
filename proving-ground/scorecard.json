@@ -1,0 +1,122 @@
+{
+  "generated": "2026-11-22T00:45:09Z",
+  "planner": "scripted",
+  "target": "lab-vulnapp (Northwind), 127.0.0.1:8080",
+  "totals": {
+    "classes": 15,
+    "found": 7,
+    "validated": 7,
+    "coverage_pct": 46.7,
+    "validated_pct": 46.7,
+    "raw_findings": 28,
+    "unmatched_findings": 13
+  },
+  "chain_depth": 3,
+  "classes": [
+    {
+      "id": "reflected-xss",
+      "name": "Reflected XSS at /search?q=",
+      "severity": "high",
+      "found": false,
+      "validated": false
+    },
+    {
+      "id": "sql-injection",
+      "name": "Error-based SQLi at /item?id=",
+      "severity": "critical",
+      "found": false,
+      "validated": false
+    },
+    {
+      "id": "open-redirect",
+      "name": "Open redirect at /redirect?url=",
+      "severity": "medium",
+      "found": false,
+      "validated": false
+    },
+    {
+      "id": "exposed-env",
+      "name": "Exposed .env (AWS/DB/JWT secrets)",
+      "severity": "critical",
+      "found": true,
+      "validated": true
+    },
+    {
+      "id": "exposed-git",
+      "name": "Exposed .git metadata / source leak",
+      "severity": "high",
+      "found": true,
+      "validated": true
+    },
+    {
+      "id": "exposed-backup",
+      "name": "Directory listing + backup.sql dump",
+      "severity": "high",
+      "found": false,
+      "validated": false
+    },
+    {
+      "id": "secrets-in-js",
+      "name": "Hardcoded secrets in app.js",
+      "severity": "high",
+      "found": true,
+      "validated": true
+    },
+    {
+      "id": "missing-sec-headers",
+      "name": "Missing security headers",
+      "severity": "medium",
+      "found": true,
+      "validated": true
+    },
+    {
+      "id": "weak-cookie",
+      "name": "Cookie without HttpOnly/Secure/SameSite",
+      "severity": "medium",
+      "found": true,
+      "validated": true
+    },
+    {
+      "id": "permissive-cors",
+      "name": "CORS * with credentials",
+      "severity": "high",
+      "found": false,
+      "validated": false
+    },
+    {
+      "id": "dangerous-methods",
+      "name": "Dangerous HTTP methods (PUT/DELETE/TRACE)",
+      "severity": "medium",
+      "found": false,
+      "validated": false
+    },
+    {
+      "id": "stale-banner",
+      "name": "Outdated server banner (Apache 2.2/PHP 5.3)",
+      "severity": "low",
+      "found": true,
+      "validated": true
+    },
+    {
+      "id": "graphql-introspection",
+      "name": "GraphQL introspection enabled",
+      "severity": "medium",
+      "found": false,
+      "validated": false
+    },
+    {
+      "id": "robots-disclosure",
+      "name": "robots.txt discloses sensitive paths",
+      "severity": "low",
+      "found": true,
+      "validated": true
+    },
+    {
+      "id": "admin-creds-comment",
+      "name": "Admin creds in HTML comment",
+      "severity": "high",
+      "found": false,
+      "validated": false
+    }
+  ]
+}

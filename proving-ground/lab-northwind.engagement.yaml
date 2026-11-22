@@ -1,0 +1,32 @@
+id: LAB-NORTHWIND-001
+client: Northwind Billing Portal (local benchmark lab, self-owned)
+description: >
+  Capability-benchmark target. A deliberately vulnerable local app
+  (proving-ground/lab-vulnapp.py) with a known, fixed set of planted issues
+  (see answer-key.json). tyto is scored on how many it autonomously finds and
+  proves. Binds 127.0.0.1:8080 only — never a real or external host.
+objectives:
+  - Measure tyto's autonomous detection + validation against a known planted set.
+  - Produce a reproducible scorecard that gates the capability loop.
+authorization:
+  authorized_by: Owner (self-attested local lab)
+  authorized_on: 2026-11-21
+  agreement_ref: self-owned-lab
+  mode: self-attested
+scope:
+  in_scope:
+    - type: url
+      value: http://127.0.0.1:8080
+    - type: ip
+      value: 127.0.0.1
+  out_of_scope: []
+rules_of_engagement:
+  max_risk: high
+  allowed_categories: [recon, scan, exploit, identity]
+  forbidden_categories: [post-exploit, dos]
+  time_windows: []
+  # Serialized on purpose: the benchmark must be reproducible. Concurrent actions
+  # against the tiny threaded lab server caused transient connection refusals and
+  # swung the finding count run-to-run. One-at-a-time trades speed for a stable score.
+  max_requests_per_second: 40
+  max_concurrent_actions: 1

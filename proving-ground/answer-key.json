@@ -1,0 +1,21 @@
+{
+  "_comment": "Ground truth for proving-ground/lab-vulnapp.py. Each class is a distinct planted issue. bench.py counts a class FOUND when >=1 tyto finding's text (title/tool/description/evidence/repro) contains any of its match strings (case-insensitive), and VALIDATED when such a finding has validated=true. Keep match strings specific enough to avoid cross-matching. When you plant a new issue in the lab app, add a class here in the SAME commit.",
+  "target": "http://127.0.0.1:8080",
+  "classes": [
+    { "id": "reflected-xss",        "name": "Reflected XSS at /search?q=",            "severity": "high",     "match": ["reflected xss", "cross-site scripting", "xss payload", "reflected input"] },
+    { "id": "sql-injection",        "name": "Error-based SQLi at /item?id=",          "severity": "critical", "match": ["sql injection", "sqli", "sql syntax"] },
+    { "id": "open-redirect",        "name": "Open redirect at /redirect?url=",        "severity": "medium",   "match": ["open redirect", "unvalidated redirect"] },
+    { "id": "exposed-env",          "name": "Exposed .env (AWS/DB/JWT secrets)",       "severity": "critical", "match": [".env", "environment file", "env file"] },
+    { "id": "exposed-git",          "name": "Exposed .git metadata / source leak",     "severity": "high",     "match": [".git", "git config", "git metadata", "source code disclosure"] },
+    { "id": "exposed-backup",       "name": "Directory listing + backup.sql dump",     "severity": "high",     "match": ["backup.sql", "/backup", "directory listing", "backup file"] },
+    { "id": "secrets-in-js",        "name": "Hardcoded secrets in app.js",             "severity": "high",     "match": ["aws", "stripe", "sk_live", "akia", "api key", "hardcoded secret", "access key"] },
+    { "id": "missing-sec-headers",  "name": "Missing security headers",                "severity": "medium",   "match": ["security header", "x-frame-options", "content-security-policy", "hsts", "x-content-type", "clickjack"] },
+    { "id": "weak-cookie",          "name": "Cookie without HttpOnly/Secure/SameSite", "severity": "medium",   "match": ["httponly", "samesite", "secure flag", "cookie flag", "cookie attribute"] },
+    { "id": "permissive-cors",      "name": "CORS * with credentials",                 "severity": "high",     "match": ["cors", "access-control-allow-origin", "cross-origin resource sharing"] },
+    { "id": "dangerous-methods",    "name": "Dangerous HTTP methods (PUT/DELETE/TRACE)","severity": "medium",   "match": ["http method", "trace method", "dangerous method", "put method", "delete method"] },
+    { "id": "stale-banner",         "name": "Outdated server banner (Apache 2.2/PHP 5.3)","severity": "low",   "match": ["apache/2.2", "php/5.3", "outdated server", "version disclos", "server banner"] },
+    { "id": "graphql-introspection","name": "GraphQL introspection enabled",           "severity": "medium",   "match": ["graphql", "introspection"] },
+    { "id": "robots-disclosure",    "name": "robots.txt discloses sensitive paths",    "severity": "low",      "match": ["robots.txt", "robots disclosure"] },
+    { "id": "admin-creds-comment",  "name": "Admin creds in HTML comment",             "severity": "high",     "match": ["password123", "admin:password", "credentials in comment", "exposed credential"] }
+  ]
+}
