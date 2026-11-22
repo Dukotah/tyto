@@ -18,8 +18,8 @@ toward measurement.
 
 | Axis | Measured by | Today |
 | --- | --- | --- |
-| **1. Detection coverage** | benchmark `coverage` | **11/15 (73.3%)** (was 8 pre-P1, WSL runner) |
-| **2. Proof / validation** | benchmark `validated` (no false-positive credit) | **11/15 (73.3%)** |
+| **1. Detection coverage** | benchmark `coverage` | **15/15 (100%)** — lab solved (8→15 via P1–P3) |
+| **2. Proof / validation** | benchmark `validated` (no false-positive credit) | **15/15 (100%)** |
 | **3. Exploitation depth** | benchmark `chain_depth` 0–3 | **3/3** (single-host proxy — weak) |
 | **4. Surface breadth** | arsenal inventory vs attack-surface map | web-deep; cloud/AD/k8s thin |
 | **5. Autonomy / planning** | benchmark under `--planner ollama` | **unmeasured** (no local model here) |
@@ -67,7 +67,7 @@ parameterized URLs discovered by recon seed the injection tools.
 Where: `internal/engine` (planning/seeding), the scripted sweep in
 `internal/planner/llm/mock.go`, the injection tools' param intake.
 
-### P2 — Invoke the full web battery in the methodology  `[ ]`
+### P2 — Invoke the full web battery in the methodology  `[x]` DONE (11→14)
 **Moves: +3 classes** (permissive-cors, dangerous-methods, graphql-introspection).
 Evidence: `corscheck`, `httpmethods`, `graphqlcheck`, `cookieaudit`, `apidocs` all
 exist in the 54-tool arsenal but the deterministic sweep never calls them, so a
@@ -76,13 +76,13 @@ undetected. Fix: expand the scripted methodology (and the `methodology.Recommend
 ranker) to cover the complete web battery; ensure `/api/graphql` is discovered.
 Where: `internal/planner/llm/mock.go`, `internal/methodology`.
 
-### P3 — secretscan reads HTML comments  `[ ]`
+### P3 — secretscan reads HTML comments  `[x]` DONE (14→15)
 **Moves: +1 class** (admin-creds-comment). Evidence: `admin:Password123!` is planted
 in an HTML comment; secretscan finds the AWS key and a generic secret but misses the
 credential-in-comment. Add a credential-pattern pass over HTML comments.
 Where: `internal/tool/builtin/secretscan`.
 
-### P4 — Reliable sensitive-directory detection  `[ ]`
+### P4 — Reliable sensitive-directory detection  `[x]` (fixed by WSL runner)
 **Moves: +1 class + removes benchmark flake** (exposed-backup). Evidence: the
 `/backup/` directory listing + `backup.sql` are detected only intermittently (raw
 findings flicker 27–29). Make `webdiscover`/`dirfuzz` deterministically catch the

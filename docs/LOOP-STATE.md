@@ -37,17 +37,23 @@ _Source: `proving-ground/scorecard.json`, 2026-11-21._
 
 | Metric | Value |
 | --- | --- |
-| **coverage** | **11 / 15 (73.3%)** |
-| **validated** | **11 / 15 (73.3%)** |
+| **coverage** | **15 / 15 (100%)** — lab solved |
+| **validated** | **15 / 15 (100%)** |
 | **chain_depth** | 3 / 3 (coarse single-host proxy) |
-| raw findings | ~63 |
+| raw findings | ~71 |
 | autonomous recall (ollama) | **unmeasured** — no local model in this env |
 
-- **Found (11):** reflected-xss · sql-injection · open-redirect · exposed-env ·
-  exposed-git · exposed-backup · secrets-in-js · missing-sec-headers · weak-cookie ·
-  stale-banner · robots-disclosure
-- **Missed (4):** permissive-cors · dangerous-methods · graphql-introspection ·
-  admin-creds-comment
+- **Found (15):** all planted classes — reflected-xss · sql-injection · open-redirect ·
+  exposed-env · exposed-git · exposed-backup · secrets-in-js · missing-sec-headers ·
+  weak-cookie · stale-banner · robots-disclosure · permissive-cors · dangerous-methods ·
+  graphql-introspection · admin-creds-comment
+- **Missed:** none
+
+> **LOOP PAUSED 2026-11-21 — v1 target exceeded (13/15 → 15/15).** The Northwind lab is
+> fully solved on the scripted (arsenal-ceiling) path. Further gains can't be measured
+> without new dimensions, which need owner decisions: **P5** (stand up the ollama
+> autonomy tier) and/or **P6** (a second, multi-host lab for real chain-depth). Both
+> are below.
 
 ### Environment notes (this machine)
 - **Runner = WSL.** Smart App Control blocks freshly-built unsigned `.exe`s
@@ -64,18 +70,19 @@ _Source: `proving-ground/scorecard.json`, 2026-11-21._
 | # | Task | Moves | Status |
 | --- | --- | --- | --- |
 | **P1** | Chain discovered params → injection tools | +3 (sqli, xss, redirect) | `[x]` **DONE** (8→11) |
-| **P2** | Invoke full web battery (cors/methods/graphql/cookie/apidocs) | +3 | `[ ]` **← NEXT** |
-| P3 | secretscan reads HTML comments | +1 (admin creds) | `[ ]` |
-| P4 | Reliable `/backup/` detection (+ kill the flake) | +1 (done via WSL runner) | `[~]` |
-| P5 | Stand up autonomy tier (ollama) of the benchmark | unlocks axis 5 | `[ ]` |
-| P6 | Second lab host for real chain-depth | fixes axis 3 | `[ ]` |
+| **P2** | Invoke full web battery (cors/methods/graphql/cookie/apidocs) | +3 | `[x]` **DONE** (11→14) |
+| **P3** | secretscan reads credential pairs (HTML comments) | +1 (admin creds) | `[x]` **DONE** (14→15) |
+| P4 | Reliable `/backup/` detection (+ kill the flake) | — | `[x]` fixed by WSL runner |
+| **P5** | Stand up autonomy tier (ollama) of the benchmark | unlocks axis 5 | `[ ]` **needs owner** |
+| **P6** | Second multi-host lab for real chain-depth | fixes axis 3 | `[ ]` **needs owner** |
 
-**NEXT TASK:** P2 — the arsenal has `corscheck`, `httpmethods`, `graphqlcheck`,
-`cookieaudit`, `apidocs` but the sweep never invokes them, so permissive-cors,
-dangerous-methods, and graphql-introspection go undetected. Dispatch the full web
-battery deterministically against `service` assets (mirror the P1 follow-up
-pattern in `internal/engine/followup.go`, or extend the methodology), and make
-`/api/graphql` discoverable. Target: +3 → 14/15.
+**NEXT TASK (needs an owner decision — loop paused):**
+- **P5** — measure autonomous planning, not just the arsenal ceiling. Needs a local
+  model: install Ollama + pull a model, then `bench.py --planner ollama`. Decision:
+  which model / is Ollama available on the loop's machine?
+- **P6** — the single-host web lab caps `chain_depth` at a coarse 3/3 and can't measure
+  recon→foothold→priv-esc→lateral→loot. Needs a second lab host (and an auth/pivot step)
+  designed in. Decision: approve building a bigger lab, and its shape.
 
 ---
 
@@ -83,6 +90,12 @@ pattern in `internal/engine/followup.go`, or extend the methodology), and make
 
 _Template per entry: date · task · score before→after · committed? · notes._
 
+- **2026-11-21 · P3 credential pairs** · 14/15 → **15/15** (+1: admin-creds-comment) · committed
+  `7a4f63e`. secretscan now detects keyword-gated `user:pass` pairs (HTML comments). **Lab
+  solved; loop paused — v1 target exceeded, next steps (P5/P6) need owner decisions.**
+- **2026-11-21 · P2 web battery** · 11/15 → **14/15** (+3: permissive-cors, dangerous-methods,
+  graphql-introspection) · committed `5923f0d`. `internal/engine/followup.go` now dispatches
+  corscheck/httpmethods/graphqlcheck/cookieaudit/apidocs against `service` assets.
 - **2026-11-21 · P1 chain params→injection** · WSL 8/15 → **11/15** (+3: reflected-xss,
   sql-injection, open-redirect) · committed. `internal/engine/followup.go` deterministically
   dispatches injection tools (webinject/ssti/sqliexploit/redircheck) against discovered
