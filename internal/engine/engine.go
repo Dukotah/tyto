@@ -318,10 +318,11 @@ func (e *Engine) Run(ctx context.Context) error {
 			e.emit(Event{Kind: "error", Cycle: c, Message: fmt.Sprintf("planner error: %v", err)})
 			return fmt.Errorf("cycle %d: %w", c, err)
 		}
-		// Deterministic methodology follow-up: test the parameters of every
-		// endpoint discovered so far. The planner may not propose this and hunt
-		// omits injection, so the engine closes the recon->exploitation seam
-		// itself. Guard + dedup still apply to each appended action.
+		// Deterministic methodology follow-up: run the full web battery on every
+		// service and test the parameters of every discovered endpoint. The planner
+		// may not propose these and hunt omits injection, so the engine closes the
+		// coverage gap itself. Guard + dedup still apply to each appended action.
+		actions = append(actions, e.serviceBatteryActions()...)
 		actions = append(actions, e.endpointInjectionActions()...)
 		if len(actions) == 0 {
 			fmt.Fprintln(e.out, "planner proposed no further actions; stopping.")

@@ -1,16 +1,16 @@
 {
-  "generated": "2026-11-22T01:02:27Z",
+  "generated": "2026-11-22T02:59:52Z",
   "planner": "scripted",
   "runner": "wsl",
   "target": "lab-vulnapp (Northwind), 127.0.0.1:8080",
   "totals": {
     "classes": 15,
-    "found": 8,
-    "validated": 8,
-    "coverage_pct": 53.3,
-    "validated_pct": 53.3,
-    "raw_findings": 33,
-    "unmatched_findings": 13
+    "found": 14,
+    "validated": 14,
+    "coverage_pct": 93.3,
+    "validated_pct": 93.3,
+    "raw_findings": 70,
+    "unmatched_findings": 38
   },
   "chain_depth": 3,
   "classes": [
@@ -18,22 +18,22 @@
       "id": "reflected-xss",
       "name": "Reflected XSS at /search?q=",
       "severity": "high",
-      "found": false,
-      "validated": false
+      "found": true,
+      "validated": true
     },
     {
       "id": "sql-injection",
       "name": "Error-based SQLi at /item?id=",
       "severity": "critical",
-      "found": false,
-      "validated": false
+      "found": true,
+      "validated": true
     },
     {
       "id": "open-redirect",
       "name": "Open redirect at /redirect?url=",
       "severity": "medium",
-      "found": false,
-      "validated": false
+      "found": true,
+      "validated": true
     },
     {
       "id": "exposed-env",
@@ -81,15 +81,15 @@
       "id": "permissive-cors",
       "name": "CORS * with credentials",
       "severity": "high",
-      "found": false,
-      "validated": false
+      "found": true,
+      "validated": true
     },
     {
       "id": "dangerous-methods",
       "name": "Dangerous HTTP methods (PUT/DELETE/TRACE)",
       "severity": "medium",
-      "found": false,
-      "validated": false
+      "found": true,
+      "validated": true
     },
     {
       "id": "stale-banner",
@@ -102,8 +102,8 @@
       "id": "graphql-introspection",
       "name": "GraphQL introspection enabled",
       "severity": "medium",
-      "found": false,
-      "validated": false
+      "found": true,
+      "validated": true
     },
     {
       "id": "robots-disclosure",

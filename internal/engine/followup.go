@@ -6,6 +6,48 @@ import (
 	"github.com/dukotah/tyto/internal/action"
 )
 
+// serviceBatteryTools are high-signal, low-risk web checks the engine dispatches
+// against every web `service` asset. They exist in the arsenal but a fixed planner
+// never calls them, so CORS misconfig, dangerous HTTP methods, GraphQL
+// introspection, cookie-flag gaps, and exposed API docs go undetected. Dispatching
+// them deterministically against the service closes that gap for every planner.
+var serviceBatteryTools = []string{"corscheck", "httpmethods", "graphqlcheck", "cookieaudit", "apidocs"}
+
+// serviceBatteryActions returns the web-battery checks to run against every web
+// `service` asset, deterministically and planner-independent (same contract as
+// endpointInjectionActions: guard + canonical-key dedup still apply).
+func (e *Engine) serviceBatteryActions() []action.Action {
+	var out []action.Action
+	for _, as := range e.state.Assets() {
+		if as.Type != "service" {
+			continue
+		}
+		target := strings.TrimSpace(as.Value)
+		if target == "" {
+			continue
+		}
+		for _, name := range serviceBatteryTools {
+			t, ok := e.tools.Get(name)
+			if !ok {
+				continue
+			}
+			a := action.Action{
+				ID:        "auto-web-" + name + "-" + target,
+				Tool:      name,
+				Category:  t.Category().String(),
+				Target:    target,
+				Risk:      t.MaxRisk(),
+				Rationale: "methodology: web battery on service " + target,
+			}
+			if e.seen[a.CanonicalKey()] {
+				continue
+			}
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
 // injectionTools are the parameter-level testers the engine dispatches against
 // every discovered endpoint, deterministically and independent of the planner.
 // This closes the recon->exploitation seam: webcrawl/jsmine/apidocs emit
