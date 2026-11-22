@@ -31,22 +31,31 @@ scorecard is how we chase it honestly.
 
 ---
 
-## Current scorecard  (planner: scripted — deterministic, no model)
+## Current scorecard  (planner: scripted · runner: wsl)
 
-_Source: `proving-ground/scorecard.json`, 2026-11-21, stable across 3 runs._
+_Source: `proving-ground/scorecard.json`, 2026-11-21._
 
 | Metric | Value |
 | --- | --- |
-| **coverage** | **7 / 15 (46.7%)** |
-| **validated** | **7 / 15 (46.7%)** |
+| **coverage** | **11 / 15 (73.3%)** |
+| **validated** | **11 / 15 (73.3%)** |
 | **chain_depth** | 3 / 3 (coarse single-host proxy) |
-| raw findings | ~28 (±1 flake) |
+| raw findings | ~63 |
 | autonomous recall (ollama) | **unmeasured** — no local model in this env |
 
-- **Found (7):** exposed-env · exposed-git · secrets-in-js · missing-sec-headers ·
-  weak-cookie · stale-banner · robots-disclosure
-- **Missed (8):** reflected-xss · sql-injection · open-redirect · exposed-backup ·
-  permissive-cors · dangerous-methods · graphql-introspection · admin-creds-comment
+- **Found (11):** reflected-xss · sql-injection · open-redirect · exposed-env ·
+  exposed-git · exposed-backup · secrets-in-js · missing-sec-headers · weak-cookie ·
+  stale-banner · robots-disclosure
+- **Missed (4):** permissive-cors · dangerous-methods · graphql-introspection ·
+  admin-creds-comment
+
+### Environment notes (this machine)
+- **Runner = WSL.** Smart App Control blocks freshly-built unsigned `.exe`s
+  (WinError 4551), so the benchmark cross-compiles a Linux ELF and runs lab + tyto
+  in WSL. `bench.py` does this automatically (`--runner auto`).
+- **Tests** run the same way: `GOOS=linux go test -c -o .bench/<pkg>.test ./pkg`
+  then execute the ELF in WSL. Native `go test` is SAC-blocked; WSL has no `go`.
+- Baseline before P1 (same WSL runner): **8/15**. P1 added exactly +3.
 
 ---
 
@@ -54,16 +63,19 @@ _Source: `proving-ground/scorecard.json`, 2026-11-21, stable across 3 runs._
 
 | # | Task | Moves | Status |
 | --- | --- | --- | --- |
-| **P1** | Chain discovered params → injection tools | +3 (sqli, xss, redirect) | `[ ]` **← NEXT** |
-| P2 | Invoke full web battery (cors/methods/graphql/cookie/apidocs) | +3 | `[ ]` |
+| **P1** | Chain discovered params → injection tools | +3 (sqli, xss, redirect) | `[x]` **DONE** (8→11) |
+| **P2** | Invoke full web battery (cors/methods/graphql/cookie/apidocs) | +3 | `[ ]` **← NEXT** |
 | P3 | secretscan reads HTML comments | +1 (admin creds) | `[ ]` |
-| P4 | Reliable `/backup/` detection (+ kill the flake) | +1 | `[ ]` |
+| P4 | Reliable `/backup/` detection (+ kill the flake) | +1 (done via WSL runner) | `[~]` |
 | P5 | Stand up autonomy tier (ollama) of the benchmark | unlocks axis 5 | `[ ]` |
 | P6 | Second lab host for real chain-depth | fixes axis 3 | `[ ]` |
 
-**NEXT TASK:** P1 — make parameterized endpoints discovered by `webcrawl` seed the
-injection tools (`webinject`/`ssti`/`sqliexploit`), then re-run the benchmark and
-confirm sql-injection + reflected-xss + open-redirect move from missed → found.
+**NEXT TASK:** P2 — the arsenal has `corscheck`, `httpmethods`, `graphqlcheck`,
+`cookieaudit`, `apidocs` but the sweep never invokes them, so permissive-cors,
+dangerous-methods, and graphql-introspection go undetected. Dispatch the full web
+battery deterministically against `service` assets (mirror the P1 follow-up
+pattern in `internal/engine/followup.go`, or extend the methodology), and make
+`/api/graphql` discoverable. Target: +3 → 14/15.
 
 ---
 
@@ -71,9 +83,16 @@ confirm sql-injection + reflected-xss + open-redirect move from missed → found
 
 _Template per entry: date · task · score before→after · committed? · notes._
 
-- **2026-11-21 · scaffolding** · n/a → coverage 7/15, validated 7/15 · harness built &
-  baseline locked (not yet committed — awaiting owner sign-off on what it measures).
-  Also shipped, uncommitted on the working tree: structured guard `DenyCode` +
-  actionable MCP denial feedback (3 files) and a latent `string(Category)` audit-log
-  fix. Branch note: the denial-feedback work is orthogonal to blue and should land on
-  its own branch off main.
+- **2026-11-21 · P1 chain params→injection** · WSL 8/15 → **11/15** (+3: reflected-xss,
+  sql-injection, open-redirect) · committed. `internal/engine/followup.go` deterministically
+  dispatches injection tools (webinject/ssti/sqliexploit/redircheck) against discovered
+  `endpoint` assets, planner-independent (hunt omits injection; a fixed planner targets
+  only the base host). Also reworked `bench.py` to the WSL runner (SAC workaround) — this
+  is why the baseline is now quoted as WSL 8/15, not the earlier native 7/15. Next: P2.
+  ⚠️ Found a separate pre-existing bug (NOT in this branch): `internal/blue/coverage/
+  coverage.go` on `feat/tyto-blue` is swallowed by the `coverage.*` .gitignore rule and was
+  never committed → the pushed blue branch won't build. File backed up to scratchpad;
+  needs a gitignore fix + commit on `feat/tyto-blue`. Flagged to owner.
+- **2026-11-21 · scaffolding** · n/a → coverage 7/15 (native) · harness + audit + loop
+  state built; structured guard `DenyCode` + actionable MCP denial feedback committed as
+  the base (`cff93a3`), scaffolding (`426f72f`), both on `feat/loop-capability` off main.

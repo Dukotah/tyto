@@ -18,8 +18,8 @@ toward measurement.
 
 | Axis | Measured by | Today |
 | --- | --- | --- |
-| **1. Detection coverage** | benchmark `coverage` | **7/15 (46.7%)** |
-| **2. Proof / validation** | benchmark `validated` (no false-positive credit) | **7/15 (46.7%)** |
+| **1. Detection coverage** | benchmark `coverage` | **11/15 (73.3%)** (was 8 pre-P1, WSL runner) |
+| **2. Proof / validation** | benchmark `validated` (no false-positive credit) | **11/15 (73.3%)** |
 | **3. Exploitation depth** | benchmark `chain_depth` 0–3 | **3/3** (single-host proxy — weak) |
 | **4. Surface breadth** | arsenal inventory vs attack-surface map | web-deep; cloud/AD/k8s thin |
 | **5. Autonomy / planning** | benchmark under `--planner ollama` | **unmeasured** (no local model here) |
@@ -54,8 +54,11 @@ whether a model *chooses* to run the right tools.
 Ordered by (benchmark points moved ÷ effort). Each item: the evidence, where it lives,
 and which number it moves. Status: `[ ]` open · `[~]` in progress · `[x]` done.
 
-### P1 — Chain discovered parameters into the injection tools  `[ ]`
-**Moves: +3 classes** (sql-injection, reflected-xss, open-redirect).
+### P1 — Chain discovered parameters into the injection tools  `[x]` DONE (8→11)
+**Moved: +3 classes** (sql-injection, reflected-xss, open-redirect). Fixed in
+`internal/engine/followup.go`: the engine now deterministically dispatches the
+injection tools against every discovered `endpoint` asset, planner-independent
+(guard + dedup still apply). Verified: WSL baseline 8/15 → 11/15, +3 exactly.
 Evidence: `webcrawl` reports "3 parameterized endpoint(s)" but `webinject`/`ssti`/
 `sqliexploit` all report **"no query parameters to test"** — discovered endpoints
 never reach the injection tools. This is the single highest-value gap: the arsenal can

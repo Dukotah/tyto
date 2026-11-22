@@ -318,6 +318,11 @@ func (e *Engine) Run(ctx context.Context) error {
 			e.emit(Event{Kind: "error", Cycle: c, Message: fmt.Sprintf("planner error: %v", err)})
 			return fmt.Errorf("cycle %d: %w", c, err)
 		}
+		// Deterministic methodology follow-up: test the parameters of every
+		// endpoint discovered so far. The planner may not propose this and hunt
+		// omits injection, so the engine closes the recon->exploitation seam
+		// itself. Guard + dedup still apply to each appended action.
+		actions = append(actions, e.endpointInjectionActions()...)
 		if len(actions) == 0 {
 			fmt.Fprintln(e.out, "planner proposed no further actions; stopping.")
 			e.emit(Event{Kind: "log", Message: "planner proposed no further actions; stopping"})

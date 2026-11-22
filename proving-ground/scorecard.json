@@ -1,14 +1,15 @@
 {
-  "generated": "2026-11-22T00:45:09Z",
+  "generated": "2026-11-22T01:02:27Z",
   "planner": "scripted",
+  "runner": "wsl",
   "target": "lab-vulnapp (Northwind), 127.0.0.1:8080",
   "totals": {
     "classes": 15,
-    "found": 7,
-    "validated": 7,
-    "coverage_pct": 46.7,
-    "validated_pct": 46.7,
-    "raw_findings": 28,
+    "found": 8,
+    "validated": 8,
+    "coverage_pct": 53.3,
+    "validated_pct": 53.3,
+    "raw_findings": 33,
     "unmatched_findings": 13
   },
   "chain_depth": 3,
@@ -52,8 +53,8 @@
       "id": "exposed-backup",
       "name": "Directory listing + backup.sql dump",
       "severity": "high",
-      "found": false,
-      "validated": false
+      "found": true,
+      "validated": true
     },
     {
       "id": "secrets-in-js",
