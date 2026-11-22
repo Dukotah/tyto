@@ -7,9 +7,14 @@
 *.dylib
 
 # Test / coverage
+# NOTE: do not use a bare `coverage.*` glob here — it silently swallows Go
+# source files named coverage.go (e.g. internal/blue/coverage/coverage.go).
+# List the actual coverage *artifact* extensions instead.
 *.test
 *.out
-coverage.*
+coverage.html
+coverage.txt
+coverage.xml
 
 # Engagement artifacts (NEVER commit real client data)
 /engagements/
