@@ -359,14 +359,14 @@ func (s *mcpServer) execAction(ctx context.Context, toolName, target string, par
 
 	t, ok := s.reg.Get(toolName)
 	if !ok {
-		return fmt.Sprintf("DENIED: unknown tool %q (not registered). Call tyto_list_tools.", toolName), true
+		return fmt.Sprintf("DENIED: unknown tool %q (not registered). %s", toolName, s.didYouMean(toolName)), true
 	}
 
 	id := fmt.Sprintf("mcp-%03d", s.actionNo.Add(1))
 	a := action.Action{
 		ID:        id,
 		Tool:      toolName,
-		Category:  string(t.Category()),
+		Category:  t.Category().String(),
 		Target:    target,
 		Params:    params,
 		Risk:      t.MaxRisk(),
@@ -379,10 +379,10 @@ func (s *mcpServer) execAction(ctx context.Context, toolName, target string, par
 		"action": id, "tool": toolName, "target": target,
 		"declared_category": a.Category, "declared_risk": a.Risk.String(),
 		"verdict": dec.Verdict.String(), "allowed": dec.IsAllowed(), "reason": dec.Reason,
-		"source": "mcp",
+		"deny_code": dec.Code.String(), "source": "mcp",
 	})
 	if dec.Verdict == guard.VerdictDeny {
-		return fmt.Sprintf("DENIED by Scope Guard: %s", dec.Reason), true
+		return s.denyGuidance(a, dec), true
 	}
 
 	// 2. Approval gate: guard-required OR tool-forced (kali for mutating commands).
@@ -483,6 +483,150 @@ func (s *mcpServer) formatResult(toolName, target string, res action.Result, nf,
 		b.WriteByte('\n')
 	}
 	return b.String()
+}
+
+// ---- denial guidance ------------------------------------------------------
+
+// denyGuidance turns a guard denial into an actionable redirect for the driving
+// model: not just WHY the action was refused, but what it can do instead — the
+// in-scope targets, the risk ceiling, the allowed categories, concrete safer
+// tools. This is what makes the guard a guide rather than a wall. The guard stays
+// pure (it emits a code + reason); the suggestions live here, derived from the
+// same engagement the guard enforces, so they can never contradict it.
+func (s *mcpServer) denyGuidance(a action.Action, dec guard.Decision) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "DENIED by Scope Guard [%s]: %s\n", dec.Code, dec.Reason)
+	switch dec.Code {
+	case guard.DenyOutOfScope:
+		b.WriteString("\nIn-scope targets you CAN act on:\n")
+		b.WriteString(s.inScopeList())
+		b.WriteString("Retry with `target` set to one of these (or a host/path under them).\n")
+	case guard.DenyRiskCeiling:
+		fmt.Fprintf(&b, "\nThis engagement's risk ceiling is %s. ", s.eng.RoE.MaxRisk)
+		if alts := s.saferAlternatives(a.Tool, s.ceiling()); len(alts) > 0 {
+			fmt.Fprintf(&b, "Same-purpose tools within the ceiling: %s.\n", strings.Join(alts, ", "))
+		} else {
+			b.WriteString("No tool of this kind fits under the ceiling.\n")
+		}
+		b.WriteString("To run the higher-risk action, the operator must raise max_risk in the engagement (re-authorization).\n")
+	case guard.DenyCategoryForbidden, guard.DenyCategoryNotAllowed:
+		if len(s.eng.RoE.AllowedCategories) > 0 {
+			fmt.Fprintf(&b, "\nAllowed categories: %s.\n", strings.Join(s.eng.RoE.AllowedCategories, ", "))
+			if alts := s.toolsInAllowedCategories(s.ceiling()); len(alts) > 0 {
+				fmt.Fprintf(&b, "Example tools you can run now: %s.\n", strings.Join(alts, ", "))
+			}
+		}
+		if len(s.eng.RoE.ForbiddenCategories) > 0 {
+			fmt.Fprintf(&b, "Forbidden categories (never allowed here): %s.\n", strings.Join(s.eng.RoE.ForbiddenCategories, ", "))
+		}
+	case guard.DenyAuthorization:
+		b.WriteString("\nThis action tier needs a verified client authorization grant covering the target. ")
+		b.WriteString("Run a lower-risk action in the same category instead, or have the operator load an engagement whose authorization covers this target at this tier.\n")
+	case guard.DenyTimeWindow:
+		b.WriteString("\nThe engagement restricts operating hours; retry inside a permitted time window.\n")
+	case guard.DenyUnknownTool:
+		b.WriteString("\n" + s.didYouMean(a.Tool))
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+// ceiling returns the engagement's effective risk ceiling (lowest level on parse
+// failure, so suggestions stay conservative).
+func (s *mcpServer) ceiling() action.RiskLevel {
+	if r, err := s.eng.RoE.MaxRiskLevel(); err == nil {
+		return r
+	}
+	return action.RiskLevel(0)
+}
+
+func (s *mcpServer) inScopeList() string {
+	if len(s.eng.Scope.InScope) == 0 {
+		return "  (none defined)\n"
+	}
+	var b strings.Builder
+	for _, t := range s.eng.Scope.InScope {
+		fmt.Fprintf(&b, "  - %s\n", t.Value)
+	}
+	return b.String()
+}
+
+// saferAlternatives lists other tools sharing the denied tool's category that fit
+// under the ceiling — the natural "do this instead" set for a risk-ceiling denial.
+func (s *mcpServer) saferAlternatives(toolName string, max action.RiskLevel) []string {
+	t, ok := s.reg.Get(toolName)
+	if !ok {
+		return nil
+	}
+	cat := t.Category()
+	var out []string
+	for _, n := range s.reg.Names() {
+		if n == toolName {
+			continue
+		}
+		o, ok := s.reg.Get(n)
+		if ok && o.Category() == cat && o.MaxRisk() <= max {
+			out = append(out, n)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// toolsInAllowedCategories lists up to 8 runnable tools whose category is allowed
+// by the RoE and whose risk fits the ceiling.
+func (s *mcpServer) toolsInAllowedCategories(max action.RiskLevel) []string {
+	allowed := map[action.Category]bool{}
+	for _, c := range s.eng.RoE.AllowedCategories {
+		if pc, err := action.ParseCategory(c); err == nil {
+			allowed[pc] = true
+		}
+	}
+	var out []string
+	for _, n := range s.reg.Names() {
+		o, ok := s.reg.Get(n)
+		if !ok {
+			continue
+		}
+		if (len(allowed) == 0 || allowed[o.Category()]) && o.MaxRisk() <= max {
+			out = append(out, n)
+		}
+	}
+	sort.Strings(out)
+	if len(out) > 8 {
+		out = out[:8]
+	}
+	return out
+}
+
+// didYouMean offers close tool-name matches for an unknown tool: a containment
+// either way, or a shared prefix of at least four characters (so "nmapp" finds
+// "nmapscan"). Keeps the driver moving instead of forcing a tyto_list_tools round
+// trip on every typo.
+func (s *mcpServer) didYouMean(name string) string {
+	q := strings.ToLower(strings.TrimSpace(name))
+	var hits []string
+	if q != "" {
+		for _, n := range s.reg.Names() {
+			ln := strings.ToLower(n)
+			if strings.Contains(ln, q) || strings.Contains(q, ln) || commonPrefixLen(q, ln) >= 4 {
+				hits = append(hits, n)
+			}
+		}
+	}
+	sort.Strings(hits)
+	if len(hits) > 0 {
+		return "Did you mean: " + strings.Join(hits, ", ") + "? (or call tyto_list_tools)"
+	}
+	return "Call tyto_list_tools to see the exact tool names."
+}
+
+// commonPrefixLen returns the length of the shared leading run of two strings.
+func commonPrefixLen(a, b string) int {
+	n := 0
+	for n < len(a) && n < len(b) && a[n] == b[n] {
+		n++
+	}
+	return n
 }
 
 // ---- read-only views ------------------------------------------------------

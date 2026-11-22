@@ -180,3 +180,37 @@ func TestEvaluateWrappingTimeWindow(t *testing.T) {
 		t.Fatalf("12:00 outside wrapping window should deny, got allow")
 	}
 }
+
+// TestEvaluateDenyCode locks the structured denial codes a driver branches on.
+// The codes must match the check that actually fires (checks run scope → risk →
+// category → auth → time, cheapest-first and short-circuit on the first failure).
+func TestEvaluateDenyCode(t *testing.T) {
+	e := testEngagement()
+	g := guardAt(e, "12:00")
+	cases := []struct {
+		name string
+		act  action.Action
+		want DenyCode
+	}{
+		{"unknown tool", action.Action{Tool: "nope", Target: "203.0.113.10"}, DenyUnknownTool},
+		{"out of scope", action.Action{Tool: "portscan", Target: "198.51.100.5"}, DenyOutOfScope},
+		{"over risk ceiling", action.Action{Tool: "exploiter", Target: "203.0.113.10"}, DenyRiskCeiling},
+		{"forbidden category", action.Action{Tool: "exploit-lite", Target: "203.0.113.10"}, DenyCategoryForbidden},
+		{"category not allowed", action.Action{Tool: "id-probe", Target: "203.0.113.10"}, DenyCategoryNotAllowed},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			dec := g.Evaluate(c.act)
+			if dec.Verdict != VerdictDeny {
+				t.Fatalf("want deny, got %s (reason %q)", dec.Verdict, dec.Reason)
+			}
+			if dec.Code != c.want {
+				t.Errorf("code = %s, want %s (reason %q)", dec.Code, c.want, dec.Reason)
+			}
+		})
+	}
+	// An allowed action carries no denial code.
+	if dec := g.Evaluate(action.Action{Tool: "portscan", Target: "203.0.113.10"}); dec.Code != DenyUnspecified {
+		t.Errorf("allowed action: code = %s, want unspecified", dec.Code)
+	}
+}

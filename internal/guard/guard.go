@@ -41,10 +41,55 @@ func (v Verdict) String() string {
 	}
 }
 
+// DenyCode categorizes WHY an action was denied, so a driver — the autonomous
+// engine's replan loop or an external MCP client — can react programmatically
+// instead of parsing the human-readable Reason string. It is purely descriptive:
+// the guard still decides; the code only explains. Zero value is DenyUnspecified,
+// so an unannotated deny still fails closed.
+type DenyCode int
+
+const (
+	DenyUnspecified DenyCode = iota
+	DenyUnknownTool
+	DenyOutOfScope
+	DenyInvalidRoE
+	DenyRiskCeiling
+	DenyCategoryForbidden
+	DenyCategoryNotAllowed
+	DenyAuthorization
+	DenyTimeWindow
+)
+
+func (c DenyCode) String() string {
+	switch c {
+	case DenyUnknownTool:
+		return "unknown_tool"
+	case DenyOutOfScope:
+		return "out_of_scope"
+	case DenyInvalidRoE:
+		return "invalid_roe"
+	case DenyRiskCeiling:
+		return "risk_ceiling"
+	case DenyCategoryForbidden:
+		return "category_forbidden"
+	case DenyCategoryNotAllowed:
+		return "category_not_allowed"
+	case DenyAuthorization:
+		return "authorization_required"
+	case DenyTimeWindow:
+		return "time_window"
+	default:
+		return "unspecified"
+	}
+}
+
 // Decision is the guard's verdict on a single action.
 type Decision struct {
 	Verdict Verdict
-	Reason  string
+	// Code categorizes a denial (DenyUnspecified for allow/approval). It lets a
+	// driver branch on the kind of denial without parsing Reason.
+	Code   DenyCode
+	Reason string
 }
 
 // IsAllowed reports whether the action may execute without further gating.
@@ -53,8 +98,14 @@ func (d Decision) IsAllowed() bool { return d.Verdict == VerdictAllow }
 // Allow returns an allowing decision.
 func Allow() Decision { return Decision{Verdict: VerdictAllow} }
 
-// Deny returns a denying decision with a human-readable reason.
+// Deny returns a denying decision with a human-readable reason and no specific
+// code (DenyUnspecified).
 func Deny(reason string) Decision { return Decision{Verdict: VerdictDeny, Reason: reason} }
+
+// deny returns a denying decision tagged with its category code.
+func deny(code DenyCode, reason string) Decision {
+	return Decision{Verdict: VerdictDeny, Code: code, Reason: reason}
+}
 
 // RequireApproval returns a decision that gates the action behind human sign-off.
 func RequireApproval(reason string) Decision {
@@ -114,19 +165,19 @@ func (g *Guard) Evaluate(a action.Action) Decision {
 	// 0. Resolve the tool authoritatively. Unknown tool => deny (fail closed).
 	meta, ok := g.tools[a.Tool]
 	if !ok {
-		return Deny(fmt.Sprintf("unknown tool %q (not registered)", a.Tool))
+		return deny(DenyUnknownTool, fmt.Sprintf("unknown tool %q (not registered)", a.Tool))
 	}
 
 	// 1. Scope. Out-of-scope always wins.
 	if !g.eng.Scope.Contains(a.Target) {
-		return Deny(fmt.Sprintf("target %q is not in scope", a.Target))
+		return deny(DenyOutOfScope, fmt.Sprintf("target %q is not in scope", a.Target))
 	}
 
 	// 2. Risk ceiling — gated on the AUTHORITATIVE effective risk (the tool's
 	// ceiling, raised by the param classifier), never the model's a.Risk.
 	maxRisk, err := g.eng.RoE.MaxRiskLevel()
 	if err != nil {
-		return Deny("rules of engagement have an invalid max_risk")
+		return deny(DenyInvalidRoE, "rules of engagement have an invalid max_risk")
 	}
 	effRisk := meta.MaxRisk
 	if g.classify != nil {
@@ -135,17 +186,17 @@ func (g *Guard) Evaluate(a action.Action) Decision {
 		}
 	}
 	if effRisk > maxRisk {
-		return Deny(fmt.Sprintf("action risk %s exceeds engagement ceiling %s", effRisk, maxRisk))
+		return deny(DenyRiskCeiling, fmt.Sprintf("action risk %s exceeds engagement ceiling %s", effRisk, maxRisk))
 	}
 
 	// 3. Categories — gated on the tool's AUTHORITATIVE category. Forbidden beats
 	// allowed.
 	cat := meta.Category
 	if categoryIn(g.eng.RoE.ForbiddenCategories, cat) {
-		return Deny(fmt.Sprintf("category %q is forbidden by the rules of engagement", cat))
+		return deny(DenyCategoryForbidden, fmt.Sprintf("category %q is forbidden by the rules of engagement", cat))
 	}
 	if len(g.eng.RoE.AllowedCategories) > 0 && !categoryIn(g.eng.RoE.AllowedCategories, cat) {
-		return Deny(fmt.Sprintf("category %q is not in the allowed list", cat))
+		return deny(DenyCategoryNotAllowed, fmt.Sprintf("category %q is not in the allowed list", cat))
 	}
 
 	// 3.5 Authorization. High-risk or exploit-category actions require authorization.
@@ -157,12 +208,12 @@ func (g *Guard) Evaluate(a action.Action) Decision {
 	// reaches here). This is gated on the AUTHORITATIVE effective risk and tool
 	// category, never on the model's self-declared values.
 	if requiresAuthorization(meta.Category, effRisk) && !g.selfAttested && !g.authorized(a.Target, effRisk) {
-		return Deny(fmt.Sprintf("action (%s, risk %s) requires a verified client authorization covering %q at this tier", cat, effRisk, a.Target))
+		return deny(DenyAuthorization, fmt.Sprintf("action (%s, risk %s) requires a verified client authorization covering %q at this tier", cat, effRisk, a.Target))
 	}
 
 	// 4. Time window.
 	if !withinWindows(g.eng.RoE.TimeWindows, g.now().UTC()) {
-		return Deny("current time is outside the permitted operating window")
+		return deny(DenyTimeWindow, "current time is outside the permitted operating window")
 	}
 
 	return Allow()
