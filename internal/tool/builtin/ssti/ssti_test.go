@@ -19,8 +19,8 @@ func vulnServer() *httptest.Server {
 	mux.HandleFunc("/render", func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query().Get("q")
 		// Naive template engine: evaluate the two common expression wrappers.
-		q = strings.ReplaceAll(q, "{{1337*1337}}", "1788569")
-		q = strings.ReplaceAll(q, "${1337*1337}", "1788569")
+		q = strings.ReplaceAll(q, "{{1337*1337}}", "1787569")
+		q = strings.ReplaceAll(q, "${1337*1337}", "1787569")
 		_, _ = w.Write([]byte("<html>welcome, " + q + "</html>"))
 	})
 	return httptest.NewServer(mux)
@@ -73,7 +73,7 @@ func TestSSTIDetectsTemplateInjection(t *testing.T) {
 	if f.CVSS != "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H" {
 		t.Errorf("unexpected CVSS vector: %q", f.CVSS)
 	}
-	if !strings.Contains(f.Evidence, "1788569") {
+	if !strings.Contains(f.Evidence, "1787569") {
 		t.Errorf("evidence should contain the reflected result, got %q", f.Evidence)
 	}
 }

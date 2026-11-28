@@ -82,6 +82,7 @@ Every decision and action is written to an append-only **audit log**.
 | `internal/state` | Knowledge store: assets, findings, timeline |
 | `internal/report` | Findings → human report |
 | `internal/audit` | Append-only audit log of decisions & actions |
+| `internal/bench` | Benchmark: vulnerable lab + answer key, run scorer, before/after comparison |
 | `internal/attack` | Tool → MITRE ATT&CK technique + expected defender telemetry |
 | `internal/purple` | Blue-team output: attack timeline, detection-coverage scoring, Navigator layer |
 | `cmd/tyto` | CLI entrypoint |
@@ -129,6 +130,18 @@ ollama pull qwen3:14b      # or let tyto auto-pick a size from your RAM
 
 `tyto authorize keygen` / `tyto authorize sign` produce the client Ed25519
 authorization needed for high-risk or exploit-category actions.
+
+## Measuring it
+
+`tyto bench` scores a run against a built-in vulnerable lab with a known answer
+key — planted bugs in three tiers plus decoys that catch false positives — so a
+change to the tools, or to the model driving them, is judged by numbers. See
+[docs/BENCHMARK.md](docs/BENCHMARK.md).
+
+```bash
+tyto bench run --planner oracle      # tool ceiling: every tool aimed perfectly
+tyto bench run --planner scripted    # floor: no model
+```
 
 ## For the blue team
 

@@ -153,7 +153,10 @@ func (t *Tool) Execute(ctx context.Context, a action.Action) (action.Result, err
 		redirected := code >= 300 && code < 400 && redirectsAway(resp.Header.Get("Location"), loginURL)
 		resp.Body.Close()
 
-		if cookie != "" || redirected {
+		// An error status is a rejected login even if the response sets a cookie:
+		// many apps set a tracking/anonymous-session cookie on every response,
+		// including 401s and 405s, and that must not be reported as a session.
+		if code < 400 && (cookie != "" || redirected) {
 			res.Session = &action.Session{Host: host, Cookie: cookie}
 			res.Credentials = append(res.Credentials, state.Credential{
 				Kind: state.CredPassword, Username: user, Secret: pass,
@@ -176,8 +179,8 @@ func (t *Tool) Execute(ctx context.Context, a action.Action) (action.Result, err
 		}
 
 		add("Login failed (credentials rejected or no session)",
-			"the login response set no cookie and did not redirect away from the login page",
-			fmt.Sprintf("HTTP %d, no Set-Cookie", code))
+			"the login response was an error, or set no cookie and did not redirect away from the login page",
+			fmt.Sprintf("HTTP %d", code))
 		res.Success = true
 		res.Output = fmt.Sprintf("%s: login failed (HTTP %d)", loginURL, code)
 		res.FinishedAt = time.Now().UTC()

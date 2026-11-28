@@ -49,6 +49,10 @@ type runOptions struct {
 	// (engine HuntMode) instead of the model planner — the overnight bounty engine.
 	hunt         bool
 	huntMaxHosts int
+	// client, when set, is used as the planner backend instead of the one
+	// --planner names. It is not a flag: `tyto bench run` uses it to drive the
+	// engine with the lab's deterministic oracle plan.
+	client llm.Client
 	// exec selects where shell-out tools run: ""=host (auto-detects Kali WSL on
 	// Windows), "wsl:<distro>"=a WSL distro. Mirrors `tyto serve --exec`.
 	exec string
@@ -127,7 +131,11 @@ func (o *runOptions) run(cmd *cobra.Command, _ []string) error {
 		}
 	}
 	var client llm.Client
+	if o.client != nil {
+		client, kind = o.client, "preset"
+	}
 	switch kind {
+	case "preset":
 	case "mock":
 		client = llm.NewDemoMock()
 	case "scripted":

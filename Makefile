@@ -4,7 +4,7 @@ BIN_DIR := bin
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X $(PKG)/pkg/version.Version=$(VERSION)
 
-.PHONY: all build run test eval lint fmt tidy clean install release snapshot
+.PHONY: all build run test eval bench lint fmt tidy clean install release snapshot
 
 all: build
 
@@ -20,6 +20,10 @@ test: ## Run tests
 
 eval: ## Run the hermetic planner/guard evaluation scorer (no GPU needed)
 	go test ./internal/eval/ -run TestHermetic -v
+
+bench: build ## Score the tool ceiling and the no-model floor against the vulnerable lab
+	./$(BIN_DIR)/$(BINARY) bench run --planner oracle
+	./$(BIN_DIR)/$(BINARY) bench run --planner scripted --cycles 6
 
 lint: ## Run golangci-lint (must be installed)
 	golangci-lint run ./...

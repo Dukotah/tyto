@@ -59,6 +59,7 @@ type mcpOptions struct {
 	engPath   string
 	exec      string
 	auditPath string
+	reportOut string
 }
 
 func newMcpCmd() *cobra.Command {
@@ -77,6 +78,7 @@ func newMcpCmd() *cobra.Command {
 	f.StringVar(&o.engPath, "engagement", "", "path to engagement YAML (required) — defines scope + rules the guard enforces")
 	f.StringVar(&o.exec, "exec", "", `where shell-out tools run: ""=host (auto-detects Kali WSL on Windows), "wsl:<distro>"`)
 	f.StringVar(&o.auditPath, "audit", "", "audit log path (default: <engagement-id>.mcp.audit.jsonl)")
+	f.StringVar(&o.reportOut, "report-out", "", "keep a JSON report at this path, rewritten after every action (for `tyto bench score` or downstream tooling)")
 	return cmd
 }
 
@@ -140,8 +142,10 @@ func (o *mcpOptions) run(cmd *cobra.Command, _ []string) error {
 		guard:    g,
 		state:    st,
 		audit:    alog,
-		sessions: make(map[string]string),
+		sessions:  make(map[string]string),
+		reportOut: o.reportOut,
 	}
+	srv.saveReport() // an empty report exists from the start, so a run with no findings still scores
 
 	fmt.Fprintf(os.Stderr, "tyto mcp %s — engagement %s (%s)\n", version.Version, eng.ID, eng.Client)
 	if spec != "" {
@@ -157,6 +161,8 @@ func (o *mcpOptions) run(cmd *cobra.Command, _ []string) error {
 // mcpServer holds the engagement body. Requests arrive serially over stdio, so
 // no locking is needed beyond the state store's own.
 type mcpServer struct {
+	// reportOut, when set, is where the JSON report is kept current.
+	reportOut string
 	eng      *engagement.Engagement
 	reg      *tool.Registry
 	guard    *guard.Guard
@@ -309,6 +315,23 @@ func toolManifest() []map[string]any {
 			"inputSchema": map[string]any{"type": "object", "properties": map[string]any{}},
 		},
 		{
+			"name":        "tyto_record_finding",
+			"description": "Record a finding YOU established by reasoning across tool results — a chained attack, a business-logic flaw, something you confirmed with tyto_kali — so it appears in the report. Tool-detected findings are recorded automatically; do not repeat them. The finding is stored as operator-asserted (a candidate, not tool-validated), so include the exact request(s) that reproduce it and the evidence you saw. Only record what you actually observed.",
+			"inputSchema": map[string]any{
+				"type":     "object",
+				"required": []string{"title", "target", "severity", "description"},
+				"properties": map[string]any{
+					"title":       map[string]any{"type": "string", "description": "short name of the issue, e.g. 'Leaked admin credentials grant access to customer export'"},
+					"target":      map[string]any{"type": "string", "description": "the in-scope URL or host affected"},
+					"severity":    map[string]any{"type": "string", "enum": []string{"info", "low", "medium", "high", "critical"}},
+					"description": map[string]any{"type": "string", "description": "what the issue is and how you established it"},
+					"evidence":    map[string]any{"type": "string", "description": "what you observed that proves it (response excerpt, status, data returned)"},
+					"repro":       map[string]any{"type": "string", "description": "exact steps or requests to reproduce"},
+					"impact":      map[string]any{"type": "string", "description": "consequence to the client if exploited"},
+				},
+			},
+		},
+		{
 			"name":        "tyto_report",
 			"description": "Render the markdown penetration-test report from everything discovered so far.",
 			"inputSchema": map[string]any{"type": "object", "properties": map[string]any{}},
@@ -337,6 +360,9 @@ func (s *mcpServer) handleToolCall(ctx context.Context, req rpcRequest, w *bufio
 		s.reply(w, req.ID, textResult(false, s.findingsText()))
 	case "tyto_report":
 		s.reply(w, req.ID, textResult(false, report.Render(s.eng, s.state)))
+	case "tyto_record_finding":
+		out, isErr := s.recordFinding(args)
+		s.reply(w, req.ID, textResult(isErr, out))
 	case "tyto_execute":
 		out, isErr := s.execAction(ctx, argStr(args, "tool"), argStr(args, "target"), argParams(args, "params"), argStr(args, "rationale"), argBool(args, "approve"))
 		s.reply(w, req.ID, textResult(isErr, out))
@@ -451,7 +477,62 @@ func (s *mcpServer) execAction(ctx context.Context, toolName, target string, par
 		"findings": len(res.Findings), "assets": len(res.Assets), "source": "mcp",
 	})
 
+	s.saveReport()
 	return s.formatResult(toolName, target, res, newFindings, newAssets, newCreds), false
+}
+
+// recordFinding stores an operator-asserted finding. The target must be in scope
+// (a finding about someone else's system has no place in this engagement's
+// report), and the finding is never marked Validated: only a tool that directly
+// observed a condition can do that, so the report keeps "the agent says" apart
+// from "a tool proved".
+func (s *mcpServer) recordFinding(args map[string]any) (string, bool) {
+	title, target := strings.TrimSpace(argStr(args, "title")), strings.TrimSpace(argStr(args, "target"))
+	desc := strings.TrimSpace(argStr(args, "description"))
+	if title == "" || target == "" || desc == "" {
+		return "REJECTED: title, target and description are all required.", true
+	}
+	if !s.eng.Scope.Contains(target) {
+		return fmt.Sprintf("REJECTED: target %q is not in scope for this engagement.", target), true
+	}
+	sev, ok := map[string]state.Severity{
+		"info": state.SeverityInfo, "low": state.SeverityLow, "medium": state.SeverityMedium,
+		"high": state.SeverityHigh, "critical": state.SeverityCritical,
+	}[strings.ToLower(strings.TrimSpace(argStr(args, "severity")))]
+	if !ok {
+		return "REJECTED: severity must be one of info, low, medium, high, critical.", true
+	}
+	f := state.Finding{
+		ID:    fmt.Sprintf("OP-%03d", s.actionNo.Add(1)),
+		Title: title, Severity: sev, Target: target, Description: desc,
+		Evidence: argStr(args, "evidence"), Repro: argStr(args, "repro"), Impact: argStr(args, "impact"),
+		Tool: "operator", Validated: false,
+	}
+	if !s.state.AddFinding(f) {
+		return "Already recorded: a finding with this title exists for this target.", false
+	}
+	_ = s.audit.Record("finding_recorded", map[string]any{
+		"id": f.ID, "title": title, "target": target, "severity": sev.String(), "source": "mcp",
+	})
+	s.saveReport()
+	return fmt.Sprintf("Recorded %s [%s] %s (%s) as an operator-asserted candidate finding.", f.ID, sev, title, target), false
+}
+
+// saveReport rewrites the JSON report when --report-out is set. It runs after
+// every state change so the file is current even if the client disconnects
+// without a clean shutdown. A write failure is reported on stderr, never to the
+// agent: the report file is a convenience, the audit log is the record.
+func (s *mcpServer) saveReport() {
+	if s.reportOut == "" {
+		return
+	}
+	data, err := report.RenderJSON(s.eng, s.state)
+	if err == nil {
+		err = os.WriteFile(s.reportOut, data, 0o600)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "tyto mcp: could not write report %s: %v\n", s.reportOut, err)
+	}
 }
 
 func (s *mcpServer) formatResult(toolName, target string, res action.Result, nf, na, nc int) string {

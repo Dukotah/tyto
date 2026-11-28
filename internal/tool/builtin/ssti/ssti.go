@@ -1,6 +1,6 @@
 // Package ssti performs inline Server-Side Template Injection detection on an
 // authorized URL's query parameters. It injects template expressions that
-// evaluate a unique arithmetic product (1337*1337 = 1788569) across the major
+// evaluate a unique arithmetic product (1337*1337 = 1787569) across the major
 // template engines; a response that contains the RESULT (not the literal
 // expression) proves the expression was evaluated server-side. A control
 // request sending the literal `1337*1337` guards against false positives from
@@ -44,7 +44,7 @@ const maxBody = 256 << 10
 // unlikely, which keeps false positives down.
 const (
 	sstiExpr   = "1337*1337" // the literal arithmetic, also used as the control
-	sstiResult = "1788569"   // 1337 * 1337
+	sstiResult = "1787569"   // 1337 * 1337
 )
 
 // payload pairs each engine-specific template wrapper with the human-readable

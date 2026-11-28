@@ -30,7 +30,7 @@ server replaces that brain with the agent on the other end of the protocol
 ## Run it
 
 ```bash
-tyto mcp --engagement path/to/engagement.yaml [--exec <backend>] [--audit <path>]
+tyto mcp --engagement path/to/engagement.yaml [--exec <backend>] [--audit <path>] [--report-out <path>]
 ```
 
 - `--engagement` (required) — the engagement YAML. Its scope and rules of
@@ -38,6 +38,9 @@ tyto mcp --engagement path/to/engagement.yaml [--exec <backend>] [--audit <path>
 - `--exec` — where shell-out tools run: empty = host (auto-detects a Kali WSL
   distro on Windows), or `wsl:<distro>`. Same resolution as `tyto run`.
 - `--audit` — audit log path (default `<engagement-id>.mcp.audit.jsonl`).
+- `--report-out` — keep a JSON report at this path, rewritten after every
+  action. Feed it to `tyto bench score` (see [BENCHMARK.md](BENCHMARK.md)) or
+  to your own tooling.
 
 stdout carries **only** protocol frames; all human/log output goes to stderr, so
 the channel is never corrupted.
@@ -56,7 +59,7 @@ new `--engagement`.
 > binary (`GOOS=linux GOARCH=amd64`) and run it from the native filesystem — a
 > binary on a `/mnt/c` DrvFs mount fails to exec. See [WSL-KALI.md](WSL-KALI.md).
 
-## The six tools
+## The seven tools
 
 | Tool | Purpose |
 |---|---|
@@ -65,6 +68,7 @@ new `--engagement`.
 | `tyto_execute` | Run one registered tool against an in-scope target. Passes the guard, then returns output + findings + assets + credentials. Gated actions return `BLOCKED` until re-called with `approve: true`. |
 | `tyto_kali` | Run an **arbitrary** command in the Kali backend — the full distro, for anything the built-in tools don't cover. Read-only commands run within the ceiling; any state-changing command is forced through human approval. Contained to the Kali VM, never tyto's own host. |
 | `tyto_findings` | Dump accumulated assets, findings (with severity) and recovered credentials (redacted). The agent's persistent memory across the run. |
+| `tyto_record_finding` | Record a finding the **agent** established by reasoning across tool results (a chained attack, a logic flaw, something confirmed with `tyto_kali`). Target must be in scope. Stored as an operator-asserted *candidate* — never as tool-validated — so the report keeps "the agent says" apart from "a tool proved". |
 | `tyto_report` | Render the markdown penetration-test report from everything discovered so far. |
 
 ### `tyto_execute` arguments
