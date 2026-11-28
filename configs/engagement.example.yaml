@@ -72,3 +72,12 @@ rules_of_engagement:
   # Global pacing.
   max_requests_per_second: 10
   max_concurrent_actions: 4
+  # Engagement marker for the client's defenders. By default every HTTP request
+  # tyto's native tools send to an in-scope host carries
+  # "X-Tyto-Engagement: <id>", so the SOC can tell the test from a real attack.
+  # Uncomment to change the header/value, or to disable it for a covert
+  # detection exercise the client has asked for. See docs/BLUE-TEAM.md.
+  # traffic_marker:
+  #   header: X-Bug-Bounty
+  #   value: researcher-handle
+  #   disabled: false

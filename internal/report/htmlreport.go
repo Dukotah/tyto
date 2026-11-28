@@ -161,6 +161,35 @@ const htmlTemplateText = `<!DOCTYPE html>
   {{end}}
 </section>
 
+{{if or .DefensiveControls .Unchallenged}}
+<section>
+  <h2>Defensive controls observed</h2>
+  {{if .DefensiveControls}}
+  <p>Controls that visibly reacted to testing:</p>
+  <table>
+    <thead><tr><th>Target</th><th>Control</th><th>Basis</th></tr></thead>
+    <tbody>
+    {{range .DefensiveControls}}
+    <tr><td class="mono">{{.Target}}</td><td>{{.Control}}</td><td>{{.Basis}}</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{end}}
+  {{if .Unchallenged}}
+  <p>Targets that took attack-like activity with <strong>no visible reaction</strong> (no rate limiting, block, or WAF fingerprint):</p>
+  <table>
+    <thead><tr><th>Target</th><th>Attack-like tools run</th></tr></thead>
+    <tbody>
+    {{range .Unchallenged}}
+    <tr><td class="mono">{{.Target}}</td><td class="mono">{{range $i, $t := .Tools}}{{if $i}}, {{end}}{{$t}}{{end}}</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{end}}
+  <p class="empty">These are inferences from how targets responded, not a control inventory. A control that only logs or alerts is invisible from the attacker's side; detection is measured separately with <span class="mono">tyto purple score</span>.</p>
+</section>
+{{end}}
+
 <footer>
   Every decision and action in this engagement is recorded in a tamper-evident,
   hash-chained audit log. Verify its hash chain to confirm this report reflects

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestChainLinksEntries(t *testing.T) {
@@ -161,4 +162,45 @@ func decodeAll(t *testing.T, b []byte) []Entry {
 		out = append(out, e)
 	}
 	return out
+}
+
+func TestReadFileAndVerifyRoundTrip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "a.jsonl")
+	l, closeFn, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Mixed value types, as the engine writes them: ints, bools, nested string maps.
+	if err := l.Record("action", map[string]any{"action": "a1", "tool": "portscan", "params": map[string]string{"ports": "1-1024", "q": "<&>"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Record("result", map[string]any{"action": "a1", "success": true, "findings": 3, "assets": 0}); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.RecordApproval(Approval{Approver: "op", ApprovedAt: time.Now(), ActionID: "a1", Approved: true}); err != nil {
+		t.Fatal(err)
+	}
+	_ = closeFn()
+
+	entries, err := ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 3 {
+		t.Fatalf("want 3 entries, got %d", len(entries))
+	}
+	if err := Verify(entries); err != nil {
+		t.Fatalf("intact chain must verify: %v", err)
+	}
+
+	// Tamper with content: detected.
+	tampered := append([]Entry(nil), entries...)
+	tampered[1].Data = map[string]any{"action": "a1", "success": false}
+	if err := Verify(tampered); err == nil {
+		t.Fatal("modified entry must fail verification")
+	}
+	// Delete an entry: detected.
+	if err := Verify(append([]Entry{entries[0]}, entries[2])); err == nil {
+		t.Fatal("removed entry must fail verification")
+	}
 }

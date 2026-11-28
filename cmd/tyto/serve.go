@@ -488,6 +488,8 @@ func (c *console) runEngagement(ctx context.Context, eng *engagement.Engagement,
 		"agreement_ref": eng.Authorization.AgreementRef,
 	})
 
+	_ = alog.Record("info", applyTrafficMarker(reg, eng))
+
 	// Per-run "risk dial": tighten the engagement's RoE DOWN to the chosen depth
 	// (intersect categories, take the lower risk ceiling). Tightening only — it never
 	// widens past the authorized/signed ceiling — so the verified grants still apply.

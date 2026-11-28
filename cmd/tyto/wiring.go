@@ -1,7 +1,10 @@
 package main
 
 import (
+	"net/http"
+
 	"github.com/dukotah/tyto/internal/action"
+	"github.com/dukotah/tyto/internal/engagement"
 	"github.com/dukotah/tyto/internal/guard"
 	"github.com/dukotah/tyto/internal/tool"
 	"github.com/dukotah/tyto/internal/tool/builtin/accesscontrol"
@@ -181,4 +184,19 @@ func toolSnapshot(r *tool.Registry) map[string]guard.ToolMeta {
 		m[t.Name()] = guard.ToolMeta{Category: t.Category(), MaxRisk: t.MaxRisk()}
 	}
 	return m
+}
+
+// applyTrafficMarker wires the engagement traffic marker into every native HTTP
+// tool in reg (unless the engagement disabled it) and returns the audit record
+// describing what was done. Recording it — including the "disabled" case — means
+// the trail always says whether this run's traffic was attributable.
+func applyTrafficMarker(reg *tool.Registry, eng *engagement.Engagement) map[string]any {
+	header, value, ok := eng.Marker()
+	if !ok {
+		return map[string]any{"event": "traffic_marker_disabled"}
+	}
+	n := tool.MarkTraffic(reg, header, value, func(r *http.Request) bool {
+		return eng.Scope.Contains(r.URL.String())
+	})
+	return map[string]any{"event": "traffic_marker", "header": header, "value": value, "tools": n}
 }

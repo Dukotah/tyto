@@ -20,6 +20,9 @@ type Snapshot struct {
 	Assets           []*state.Asset  `json:"assets"`
 	Findings         []state.Finding `json:"findings"`
 	CompletedActions []string        `json:"completed_actions"`
+	// Defenses are the defensive reactions observed so far, so a resumed run's
+	// report still shows what the earlier session ran into.
+	Defenses []state.DefenseObservation `json:"defenses,omitempty"`
 }
 
 // Capture builds a snapshot from live state plus the engine's completed-action
@@ -29,6 +32,7 @@ func Capture(st *state.State, completedActions []string) Snapshot {
 		Assets:           st.Assets(),
 		Findings:         st.Findings(),
 		CompletedActions: completedActions,
+		Defenses:         st.Defenses(),
 	}
 }
 
@@ -39,6 +43,9 @@ func (s Snapshot) Into(st *state.State) {
 	}
 	for _, f := range s.Findings {
 		st.AddFinding(f)
+	}
+	for _, d := range s.Defenses {
+		st.ObserveDefense(d)
 	}
 }
 

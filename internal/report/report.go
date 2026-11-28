@@ -26,6 +26,11 @@ type Report struct {
 	Findings     []FindingView    `json:"findings"`
 	Assets       []AssetView      `json:"assets"`
 	Credentials  []CredentialView `json:"credentials,omitempty"`
+	// DefensiveControls are the client controls that visibly reacted to testing;
+	// Unchallenged are targets that took attack-like activity with no visible
+	// reaction. Together they are the report's blue-team view (see defense.go).
+	DefensiveControls []DefenseView      `json:"defensive_controls,omitempty"`
+	Unchallenged      []UnchallengedView `json:"no_defensive_reaction,omitempty"`
 }
 
 // CredentialView is the report-facing projection of a recovered credential.
@@ -218,6 +223,7 @@ func BuildWithEvidence(eng *engagement.Engagement, st *state.State, ev evidence.
 		r.Assets = append(r.Assets, AssetView{Type: a.Type, Value: a.Value, Attrs: a.Attrs})
 	}
 	sort.SliceStable(r.Assets, func(i, j int) bool { return r.Assets[i].Value < r.Assets[j].Value })
+	r.DefensiveControls, r.Unchallenged = buildDefense(st)
 	return r
 }
 
@@ -264,7 +270,8 @@ func RenderWithEvidence(eng *engagement.Engagement, st *state.State, ev evidence
 	b.WriteString("\n")
 
 	if len(r.Findings) == 0 {
-		b.WriteString("No findings recorded.\n")
+		b.WriteString("No findings recorded.\n\n")
+		writeDefense(&b, r)
 		return b.String()
 	}
 
@@ -339,6 +346,8 @@ func RenderWithEvidence(eng *engagement.Engagement, st *state.State, ev evidence
 		}
 		b.WriteString("\n")
 	}
+
+	writeDefense(&b, r)
 
 	b.WriteString("_The tamper-evident audit log records every decision and action; verify its hash chain to confirm this report matches what ran._\n")
 	return b.String()

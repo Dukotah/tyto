@@ -102,3 +102,27 @@ func (e *Engagement) Validate() error {
 	}
 	return e.RoE.validate()
 }
+
+// Marker returns the engagement traffic-marker header and value, or ok=false
+// when the engagement turned it off. The value defaults to the engagement id,
+// with any byte that is not legal in a header value replaced by '-'.
+func (e *Engagement) Marker() (header, value string, ok bool) {
+	m := e.RoE.TrafficMarker
+	if m.Disabled {
+		return "", "", false
+	}
+	header, value = m.Header, m.Value
+	if header == "" {
+		header = DefaultMarkerHeader
+	}
+	if value == "" {
+		b := []byte(e.ID)
+		for i, c := range b {
+			if c < 0x20 || c > 0x7e {
+				b[i] = '-'
+			}
+		}
+		value = string(b)
+	}
+	return header, value, true
+}

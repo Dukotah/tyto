@@ -3,6 +3,7 @@ package engagement
 import (
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/dukotah/tyto/internal/action"
@@ -49,6 +50,64 @@ type RoE struct {
 	TimeWindows         []TimeWindow `yaml:"time_windows"`
 	MaxRPS              float64      `yaml:"max_requests_per_second"`
 	MaxConcurrent       int          `yaml:"max_concurrent_actions"`
+	// TrafficMarker controls the engagement marker header tyto stamps on its HTTP
+	// requests so the client's defenders can tell test traffic from a real attack.
+	TrafficMarker TrafficMarker `yaml:"traffic_marker"`
+}
+
+// DefaultMarkerHeader is the request header carrying the engagement marker.
+const DefaultMarkerHeader = "X-Tyto-Engagement"
+
+// TrafficMarker configures the engagement marker. The zero value means "on, with
+// the default header and the engagement id as its value": attributable traffic is
+// the default, and going unmarked (e.g. a covert detection exercise the client
+// asked for) is an explicit, recorded choice.
+type TrafficMarker struct {
+	// Disabled turns the marker off.
+	Disabled bool `yaml:"disabled"`
+	// Header overrides the header name (default X-Tyto-Engagement). Bug-bounty
+	// programs that mandate their own header (e.g. "X-Bug-Bounty") set it here.
+	Header string `yaml:"header"`
+	// Value overrides the header value (default: the engagement id).
+	Value string `yaml:"value"`
+}
+
+func (m TrafficMarker) validate() error {
+	if m.Header != "" && !isHeaderToken(m.Header) {
+		return fmt.Errorf("rules_of_engagement.traffic_marker.header %q is not a valid HTTP header name", m.Header)
+	}
+	if !isHeaderValue(m.Value) {
+		return fmt.Errorf("rules_of_engagement.traffic_marker.value must be printable ASCII with no line breaks")
+	}
+	return nil
+}
+
+// isHeaderToken reports whether s is a valid HTTP field name (RFC 9110 token).
+func isHeaderToken(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+		case strings.IndexByte("!#$%&'*+-.^_`|~", c) >= 0:
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// isHeaderValue reports whether s is safe as a header value: printable ASCII
+// only, so it can never smuggle a CR/LF into a request.
+func isHeaderValue(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] < 0x20 || s[i] > 0x7e {
+			return false
+		}
+	}
+	return true
 }
 
 // MaxRiskLevel parses the configured risk ceiling.
@@ -127,5 +186,5 @@ func (r RoE) validate() error {
 	if r.MaxConcurrent < 0 {
 		return fmt.Errorf("rules_of_engagement.max_concurrent_actions must be >= 0")
 	}
-	return nil
+	return r.TrafficMarker.validate()
 }

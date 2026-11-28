@@ -221,6 +221,12 @@ func (o *runOptions) run(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("write audit head: %w", err)
 	}
 
+	// Stamp the engagement marker on native HTTP traffic so the client's defenders
+	// can attribute it, and record in the trail whether this run was marked.
+	if err := alog.Record("info", applyTrafficMarker(reg, eng)); err != nil {
+		return fmt.Errorf("write audit head: %w", err)
+	}
+
 	eg := engine.New(
 		eng,
 		guard.New(eng, toolSnapshot(reg), grants),

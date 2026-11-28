@@ -130,6 +130,10 @@ func (o *mcpOptions) run(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("write audit head: %w", err)
 	}
 
+	if err := alog.Record("info", applyTrafficMarker(reg, eng)); err != nil {
+		return fmt.Errorf("write audit head: %w", err)
+	}
+
 	srv := &mcpServer{
 		eng:      eng,
 		reg:      reg,
@@ -366,7 +370,7 @@ func (s *mcpServer) execAction(ctx context.Context, toolName, target string, par
 	a := action.Action{
 		ID:        id,
 		Tool:      toolName,
-		Category:  string(t.Category()),
+		Category:  t.Category().String(),
 		Target:    target,
 		Params:    params,
 		Risk:      t.MaxRisk(),

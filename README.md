@@ -82,6 +82,8 @@ Every decision and action is written to an append-only **audit log**.
 | `internal/state` | Knowledge store: assets, findings, timeline |
 | `internal/report` | Findings → human report |
 | `internal/audit` | Append-only audit log of decisions & actions |
+| `internal/attack` | Tool → MITRE ATT&CK technique + expected defender telemetry |
+| `internal/purple` | Blue-team output: attack timeline, detection-coverage scoring, Navigator layer |
 | `cmd/tyto` | CLI entrypoint |
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the deep dive and
@@ -127,6 +129,20 @@ ollama pull qwen3:14b      # or let tyto auto-pick a size from your RAM
 
 `tyto authorize keygen` / `tyto authorize sign` produce the client Ed25519
 authorization needed for high-risk or exploit-category actions.
+
+## For the blue team
+
+A run is also a detection test. `tyto purple` turns the audit log into an attack
+timeline the SOC can replay, scores the SOC's alert export against it (what was
+detected, what was missed, how fast), and exports an ATT&CK Navigator layer of
+the gaps. Test traffic carries an engagement marker header so defenders can tell
+it from a real attack, and every report lists which defensive controls pushed
+back. See [docs/BLUE-TEAM.md](docs/BLUE-TEAM.md).
+
+```bash
+tyto purple timeline --audit ENG-001.audit.jsonl --out timeline.md
+tyto purple score    --audit ENG-001.audit.jsonl --alerts soc-alerts.csv --out coverage.md
+```
 
 ## License
 

@@ -119,3 +119,10 @@ func normalizeURL(target string) string {
 	}
 	return "http://" + target
 }
+
+// WrapTransport implements tool.TransportWrapper: it lets the engine layer a
+// RoundTripper (engagement traffic marker, evidence capture) under this tool's
+// HTTP client without the tool knowing about it.
+func (t *Tool) WrapTransport(wrap func(http.RoundTripper) http.RoundTripper) {
+	t.http.Transport = wrap(t.http.Transport)
+}

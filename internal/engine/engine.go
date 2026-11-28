@@ -108,6 +108,9 @@ type Engine struct {
 	// sessions maps a host to an established session cookie (from the login tool),
 	// injected into later actions against that host so they run authenticated.
 	sessions map[string]string
+	// hostActions counts committed actions per target host, so a defensive reaction
+	// can be reported with how much testing preceded it. Touched only in COMMIT.
+	hostActions map[string]int
 	// scratch is the planner's short-term memory (already-done + denied actions),
 	// fed back each cycle so the model stops re-proposing finished or out-of-bounds work.
 	scratch *planner.Scratchpad
@@ -125,7 +128,7 @@ func New(
 	out io.Writer,
 	opts Options,
 ) *Engine {
-	e := &Engine{eng: eng, guard: g, planner: p, tools: tools, state: st, audit: a, out: out, opts: opts, seen: make(map[string]bool), throttle: newThrottle(eng.RoE), sessions: make(map[string]string), scratch: planner.NewScratchpad()}
+	e := &Engine{eng: eng, guard: g, planner: p, tools: tools, state: st, audit: a, out: out, opts: opts, seen: make(map[string]bool), throttle: newThrottle(eng.RoE), sessions: make(map[string]string), hostActions: make(map[string]int), scratch: planner.NewScratchpad()}
 	for _, k := range opts.PriorActionKeys {
 		e.seen[k] = true
 	}
@@ -602,6 +605,24 @@ func (e *Engine) commit(ad *admitted) (bool, error) {
 	// (429/503, connection resets). Done here in the serial COMMIT phase so the
 	// governor's per-target state is never touched from a concurrent goroutine.
 	e.throttle.observe(a.Target, res.Output, resultError(res, ad.err))
+	// Separately — and more strictly — note when the target's defenses visibly
+	// reacted, so the report can say what the client's controls DID do. The count
+	// of prior actions against the host gives the "how much did it take" context.
+	host := engagementHost(a.Target)
+	if kind, signal := classifyDefense(res.Output, resultError(res, ad.err)); kind != "" {
+		if e.state.ObserveDefense(state.DefenseObservation{
+			Target: host, Kind: kind, Signal: signal, Tool: a.Tool, AfterActions: e.hostActions[host],
+		}) {
+			if err := e.rec("defense_observed", map[string]any{
+				"action": a.ID, "tool": a.Tool, "target": host, "kind": kind,
+				"detail": signal, "after_actions": e.hostActions[host],
+			}); err != nil {
+				return false, err
+			}
+			e.emit(Event{Kind: "defense", Tool: a.Tool, Target: host, Message: kind + " (" + signal + ")"})
+		}
+	}
+	e.hostActions[host]++
 	// Record that this executed action touched its target asset, so the frontier's
 	// coverage view (Covered / UncoveredDirections) reflects actions, not just
 	// findings. Direction is left empty — asset-level coverage; per-direction

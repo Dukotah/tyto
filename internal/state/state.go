@@ -39,6 +39,10 @@ type State struct {
 	coverageKeys map[string]bool            // dedup by (kind, ref, direction, asset)
 	coveredRefs  map[string]bool            // normalized asset ref -> touched at all
 	coveredDirs  map[string]map[string]bool // normalized asset ref -> covered directions
+
+	// defenses are the defensive reactions observed from targets (see defense.go),
+	// keyed by (target, kind).
+	defenses map[string]*DefenseObservation
 }
 
 // New returns an empty State.

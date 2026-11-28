@@ -165,3 +165,47 @@ func RedactSecret(v string) map[string]any {
 		"last4":  last4,
 	}
 }
+
+// ReadFile loads every entry of a JSONL audit log, in order. It does not check
+// the hash chain — call Verify for that. Blank lines are skipped; a line that is
+// not a valid entry is a hard error (fail closed: a consumer must never build on
+// a partially-understood trail).
+func ReadFile(path string) ([]Entry, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("audit: read %s: %w", path, err)
+	}
+	var entries []Entry
+	for i, line := range bytes.Split(data, []byte("\n")) {
+		if len(bytes.TrimSpace(line)) == 0 {
+			continue
+		}
+		var e Entry
+		if err := json.Unmarshal(line, &e); err != nil {
+			return nil, fmt.Errorf("audit: %s line %d is not a valid entry: %w", path, i+1, err)
+		}
+		entries = append(entries, e)
+	}
+	return entries, nil
+}
+
+// Verify checks the hash chain over entries: sequence numbers are contiguous from
+// 0, each PrevHash matches the previous entry's Hash (GenesisHash for the first),
+// and each Hash matches the recomputed hash of its chained fields. It returns nil
+// for an intact chain and an error naming the first broken entry otherwise.
+func Verify(entries []Entry) error {
+	prev := GenesisHash
+	for i, e := range entries {
+		if e.Seq != uint64(i) {
+			return fmt.Errorf("audit: chain broken at position %d: seq is %d (an entry was removed or reordered)", i, e.Seq)
+		}
+		if e.PrevHash != prev {
+			return fmt.Errorf("audit: chain broken at seq %d: prev_hash does not match the preceding entry", e.Seq)
+		}
+		if got := hashEntry(e); got != e.Hash {
+			return fmt.Errorf("audit: chain broken at seq %d: entry content does not match its hash (modified after writing)", e.Seq)
+		}
+		prev = e.Hash
+	}
+	return nil
+}
